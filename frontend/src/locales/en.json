@@ -448,7 +448,8 @@
       "translated_subtitle": "Translated Subtitles",
       "tts_audio": "TTS Audio",
       "final_video": "Final Video",
-      "thumbnail": "Thumbnail"
+      "thumbnail": "Thumbnail",
+      "ai_thumbnail": "AI Thumbnail"
     },
     "status": {
       "completed": "Completed",

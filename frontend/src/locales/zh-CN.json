@@ -448,7 +448,8 @@
       "translated_subtitle": "翻译字幕",
       "tts_audio": "配音音频",
       "final_video": "最终视频",
-      "thumbnail": "缩略图"
+      "thumbnail": "缩略图",
+      "ai_thumbnail": "AI 缩略图"
     },
     "status": {
       "completed": "完成",
