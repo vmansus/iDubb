@@ -17,9 +17,44 @@ from config import settings
 # Database path
 DB_PATH = settings.DATA_DIR / "idubb.db"
 
+# Legacy database names (for migration)
+LEGACY_DB_NAMES = ["nextgenmedia.db", "tasks.db"]
+
 # Async engine
 _engine = None
 _session_factory = None
+
+
+def migrate_legacy_database():
+    """Check for legacy database files and migrate if needed"""
+    if DB_PATH.exists() and DB_PATH.stat().st_size > 0:
+        # Current database exists and has data, no migration needed
+        return
+    
+    # Check for legacy databases
+    for legacy_name in LEGACY_DB_NAMES:
+        legacy_path = settings.DATA_DIR / legacy_name
+        if legacy_path.exists() and legacy_path.stat().st_size > 0:
+            logger.warning(f"Found legacy database: {legacy_path} ({legacy_path.stat().st_size} bytes)")
+            
+            # Backup current db if it exists (even if empty)
+            if DB_PATH.exists():
+                backup_path = DB_PATH.with_suffix('.db.bak')
+                DB_PATH.rename(backup_path)
+                logger.info(f"Backed up empty database to: {backup_path}")
+            
+            # Copy legacy database to new location
+            import shutil
+            shutil.copy2(legacy_path, DB_PATH)
+            logger.info(f"Migrated legacy database {legacy_name} -> {DB_PATH.name}")
+            
+            # Rename legacy file to prevent future confusion
+            legacy_backup = legacy_path.with_suffix('.db.migrated')
+            legacy_path.rename(legacy_backup)
+            logger.info(f"Renamed legacy database to: {legacy_backup}")
+            return
+    
+    logger.debug("No legacy database found, starting fresh")
 
 
 def get_engine():
@@ -28,6 +63,9 @@ def get_engine():
     if _engine is None:
         # Ensure data directory exists
         DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Migrate legacy database if needed
+        migrate_legacy_database()
 
         db_url = f"sqlite+aiosqlite:///{DB_PATH}"
         logger.info(f"Creating database engine: {db_url}")
