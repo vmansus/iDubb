@@ -1,0 +1,207 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+/* Dark mode - automatic color inversion for cards and text */
+:root.dark {
+  color-scheme: dark;
+}
+
+.dark {
+  --bg-primary: #111827;      /* gray-900 */
+  --bg-secondary: #1f2937;    /* gray-800 */
+  --bg-tertiary: #374151;     /* gray-700 */
+  --text-primary: #f9fafb;    /* gray-50 */
+  --text-secondary: #e5e7eb;  /* gray-200 */
+  --text-muted: #9ca3af;      /* gray-400 */
+  --border-color: #374151;    /* gray-700 */
+}
+
+/* Apply dark mode to cards with white/light backgrounds */
+.dark .bg-white,
+.dark .bg-gray-50 {
+  background-color: var(--bg-secondary) !important;
+  color: var(--text-primary) !important;
+}
+
+.dark .bg-gray-100 {
+  background-color: var(--bg-primary) !important;
+}
+
+/* Fix text visibility in dark mode */
+.dark .text-gray-900,
+.dark .text-gray-800,
+.dark .text-gray-700 {
+  color: var(--text-primary) !important;
+}
+
+.dark .text-gray-600,
+.dark .text-gray-500 {
+  color: var(--text-muted) !important;
+}
+
+/* Dark mode borders */
+.dark .border-gray-200,
+.dark .border-gray-300 {
+  border-color: var(--border-color) !important;
+}
+
+/* Dark mode inputs */
+.dark input:not([type="checkbox"]):not([type="radio"]),
+.dark textarea,
+.dark select {
+  background-color: var(--bg-tertiary) !important;
+  border-color: var(--border-color) !important;
+  color: var(--text-primary) !important;
+}
+
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: var(--text-muted) !important;
+}
+
+/* Dark mode shadows */
+.dark .shadow-sm,
+.dark .shadow {
+  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.5) !important;
+}
+
+/* Keep colored elements visible */
+.dark .bg-green-50,
+.dark .bg-green-100 {
+  background-color: rgba(34, 197, 94, 0.15) !important;
+  color: var(--text-primary) !important;
+}
+
+.dark .bg-green-50 *,
+.dark .bg-green-100 * {
+  color: var(--text-primary) !important;
+}
+
+.dark .text-green-700,
+.dark .text-green-800,
+.dark .text-green-900 {
+  color: #86efac !important; /* green-300 */
+}
+
+.dark .bg-blue-50,
+.dark .bg-blue-100 {
+  background-color: rgba(59, 130, 246, 0.15) !important;
+  color: var(--text-primary) !important;
+}
+
+.dark .bg-blue-50 *,
+.dark .bg-blue-100 * {
+  color: var(--text-primary) !important;
+}
+
+.dark .text-blue-700,
+.dark .text-blue-800,
+.dark .text-blue-900 {
+  color: #93c5fd !important; /* blue-300 */
+}
+
+.dark .bg-yellow-50,
+.dark .bg-yellow-100 {
+  background-color: rgba(234, 179, 8, 0.15) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Fix text inside colored backgrounds */
+.dark .bg-yellow-50 *,
+.dark .bg-yellow-100 *,
+.dark .bg-yellow-50 p,
+.dark .bg-yellow-100 p {
+  color: var(--text-primary) !important;
+}
+
+.dark .text-yellow-700,
+.dark .text-yellow-800,
+.dark .text-yellow-900 {
+  color: #fde047 !important; /* yellow-300 */
+}
+
+.dark .bg-red-50,
+.dark .bg-red-100 {
+  background-color: rgba(239, 68, 68, 0.15) !important;
+  color: var(--text-primary) !important;
+}
+
+.dark .bg-red-50 *,
+.dark .bg-red-100 * {
+  color: var(--text-primary) !important;
+}
+
+.dark .text-red-700,
+.dark .text-red-800,
+.dark .text-red-900 {
+  color: #fca5a5 !important; /* red-300 */
+}
+
+.dark .bg-pink-50,
+.dark .bg-pink-100 {
+  background-color: rgba(236, 72, 153, 0.15) !important;
+  color: var(--text-primary) !important;
+}
+
+.dark .bg-pink-50 *,
+.dark .bg-pink-100 * {
+  color: var(--text-primary) !important;
+}
+
+.dark .text-pink-700,
+.dark .text-pink-800,
+.dark .text-pink-900 {
+  color: #f9a8d4 !important; /* pink-300 */
+}
+
+/* RTL Support */
+[dir="rtl"] {
+  text-align: right;
+}
+
+[dir="rtl"] .space-x-2 > :not([hidden]) ~ :not([hidden]) {
+  --tw-space-x-reverse: 1;
+}
+
+[dir="rtl"] .space-x-3 > :not([hidden]) ~ :not([hidden]) {
+  --tw-space-x-reverse: 1;
+}
+
+[dir="rtl"] .space-x-4 > :not([hidden]) ~ :not([hidden]) {
+  --tw-space-x-reverse: 1;
+}
+
+/* RTL specific margin/padding adjustments */
+[dir="rtl"] .ml-2 {
+  margin-left: 0;
+  margin-right: 0.5rem;
+}
+
+[dir="rtl"] .mr-2 {
+  margin-right: 0;
+  margin-left: 0.5rem;
+}
+
+[dir="rtl"] .ml-1 {
+  margin-left: 0;
+  margin-right: 0.25rem;
+}
+
+[dir="rtl"] .mr-1 {
+  margin-right: 0;
+  margin-left: 0.25rem;
+}
+
+/* RTL class utilities */
+.rtl {
+  direction: rtl;
+}
+
+.ltr {
+  direction: ltr;
+}

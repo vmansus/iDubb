@@ -1,0 +1,4 @@
+# Ignore all data files
+*
+!.gitignore
+!settings.json.example

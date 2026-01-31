@@ -1,0 +1,68 @@
+# Video Download (use latest for YouTube signature solving)
+yt-dlp>=2024.12.0
+
+# Audio/Video Processing
+ffmpeg-python>=0.2.0
+pydub>=0.25.1
+
+# Speech Recognition (Local Whisper)
+openai-whisper>=20231117
+torch>=2.0.0
+torchaudio>=2.0.0
+
+# WhisperX for word-level alignment (optional but recommended)
+# Install with: pip install whisperx
+# Requires additional setup for forced alignment models
+whisperx>=3.1.1
+
+# Translation (Free APIs)
+deep-translator>=1.11.4
+# Note: googletrans has dependency issues, using deep-translator instead
+
+# TTS (Free options)
+edge-tts>=6.1.9
+pyttsx3>=2.90
+gtts>=2.5.0
+qwen-tts>=1.0.0  # Qwen3-TTS: high-quality voice synthesis & cloning
+soundfile>=0.12.0  # Required for Qwen3-TTS audio output
+
+# Web Framework
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+python-multipart>=0.0.6
+
+# Database
+sqlalchemy>=2.0.25
+aiosqlite>=0.19.0
+
+# Task Queue (optional)
+# celery>=5.3.6
+# redis>=5.0.1
+
+# Browser Automation (for TikTok scraping)
+playwright>=1.40.0
+
+# Utilities
+pydantic>=2.5.3
+pydantic-settings>=2.1.0
+python-dotenv>=1.0.0
+aiohttp>=3.9.1
+aiofiles>=23.2.1
+httpx>=0.26.0
+
+# Platform Upload Dependencies
+requests>=2.31.0
+requests-toolbelt>=1.0.0
+rsa>=4.9
+qrcode>=7.4.2
+Pillow>=10.2.0
+
+# Logging & Monitoring
+loguru>=0.7.2
+rich>=13.7.0
+
+# Security
+cryptography>=42.0.0
+slowapi>=0.1.9
+pycryptodome>=3.20.0  # Required for Chrome cookie decryption on macOS
+openai>=1.0.0

@@ -1,0 +1,62 @@
+{
+  "video": {
+    "default_quality": "1080p",
+    "preferred_format": "mp4",
+    "max_duration": 3600,
+    "download_subtitles": true,
+    "prefer_existing_subtitles": true
+  },
+  "translation": {
+    "engine": "gpt",
+    "model": "gpt-4",
+    "preserve_formatting": true,
+    "batch_size": 10,
+    "api_keys": {
+      "openai": "",
+      "anthropic": "",
+      "deepseek": "",
+      "deepl": ""
+    }
+  },
+  "tts": {
+    "engine": "edge",
+    "voice": "zh-CN-XiaoxiaoNeural",
+    "speed": 1.0,
+    "pitch": 1.0,
+    "api_key": null
+  },
+  "subtitle": {
+    "enabled": true,
+    "dual_subtitles": true,
+    "font_name": "",
+    "font_size": 24,
+    "position": "bottom",
+    "style": "default",
+    "chinese_on_top": true,
+    "original_style": {
+      "font_name": "",
+      "font_size": 20,
+      "color": "#CCCCCC",
+      "outline_color": "#000000",
+      "outline_width": 2,
+      "bold": false
+    },
+    "translated_style": {
+      "font_name": "",
+      "font_size": 26,
+      "color": "#FFFFFF",
+      "outline_color": "#000000",
+      "outline_width": 2,
+      "bold": true
+    }
+  },
+  "audio": {
+    "generate_tts": false,
+    "replace_original": false,
+    "original_volume": 0.3,
+    "tts_volume": 1
+  },
+  "auto_upload_bilibili": false,
+  "auto_upload_douyin": false,
+  "auto_upload_xiaohongshu": false
+}
