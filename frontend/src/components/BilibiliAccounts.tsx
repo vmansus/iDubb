@@ -37,7 +37,7 @@ function QRLoginModal({ isOpen, onClose, onSuccess }: QRLoginModalProps) {
       })
       setQrcodeDataUrl(dataUrl)
       setStatus('waiting')
-    } catch (error) {
+    } catch (_error) {
       setStatus('error')
       setMessage('生成二维码失败，请重试')
     }
@@ -78,8 +78,8 @@ function QRLoginModal({ isOpen, onClose, onSuccess }: QRLoginModalProps) {
         setStatus('error')
         setMessage(result.message)
       }
-    } catch (error) {
-      console.error('Poll error:', error)
+    } catch (err) {
+      console.error('Poll error:', err)
     }
   }, [qrcodeKey, label, stopPolling, onSuccess, onClose])
 
