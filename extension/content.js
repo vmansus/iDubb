@@ -18,6 +18,14 @@ async function loadSavedSettings() {
   });
 }
 
+// Listen for settings changes (when user updates popup config)
+chrome.storage.onChanged.addListener((changes, namespace) => {
+  if (namespace === 'sync' && changes.settings) {
+    savedSettings = changes.settings.newValue || {};
+    console.log('[iDubb] Settings updated:', savedSettings);
+  }
+});
+
 // Get default mode from saved settings
 function getDefaultMode() {
   if (!savedSettings) return 'smart';
