@@ -228,7 +228,7 @@ async def extract_video_data(element) -> Optional[Dict[str, Any]]:
 
 def extract_video_from_api_item(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Extract video data from TikTok API response item"""
-    from datetime import datetime
+    from datetime import datetime, timezone
     
     try:
         video_id = str(item.get('id', ''))
@@ -252,13 +252,26 @@ def extract_video_from_api_item(item: Dict[str, Any]) -> Optional[Dict[str, Any]
         desc = item.get('desc', '')
         
         # Get publish time (createTime is Unix timestamp)
+        # Convert to user's configured timezone
         create_time = item.get('createTime', 0)
         published_at = None
         if create_time:
             try:
-                published_at = datetime.fromtimestamp(int(create_time)).isoformat()
-            except (ValueError, TypeError):
-                pass
+                from settings_store import settings_store
+                import pytz
+                
+                # Get timezone from global settings
+                tz_name = settings_store.load().timezone or 'Asia/Shanghai'
+                tz = pytz.timezone(tz_name)
+                
+                # Convert Unix timestamp to timezone-aware datetime
+                utc_dt = datetime.fromtimestamp(int(create_time), tz=timezone.utc)
+                local_dt = utc_dt.astimezone(tz)
+                published_at = local_dt.isoformat()
+            except Exception as e:
+                # Fallback to UTC if timezone conversion fails
+                logger.debug(f"Timezone conversion failed: {e}, using UTC")
+                published_at = datetime.utcfromtimestamp(int(create_time)).isoformat()
         
         return {
             'video_id': video_id,
