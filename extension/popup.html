@@ -35,6 +35,24 @@
     .header h1 {
       font-size: 18px;
       color: #333;
+      flex: 1;
+    }
+
+    .connection-status {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      white-space: nowrap;
+    }
+
+    .connection-status.connected {
+      background: #d4edda;
+      color: #155724;
+    }
+
+    .connection-status.disconnected {
+      background: #f8d7da;
+      color: #721c24;
     }
 
     .section {
@@ -82,6 +100,11 @@
     select:focus {
       outline: none;
       border-color: #ff6b6b;
+    }
+
+    select:empty::after,
+    select option:disabled {
+      color: #999;
     }
 
     .checkbox-group {
@@ -174,12 +197,18 @@
       padding: 8px;
       font-size: 13px;
     }
+
+    .loading-placeholder {
+      color: #999;
+      font-style: italic;
+    }
   </style>
 </head>
 <body>
   <div class="header">
     <img src="icons/icon48.png" alt="iDubb">
     <h1>iDubb</h1>
+    <span class="connection-status disconnected" id="connectionStatus">连接中...</span>
   </div>
 
   <!-- Pending video section (shown when right-click -> custom) -->
@@ -235,14 +264,21 @@
   </div>
 
   <div class="section">
+    <div class="section-title">字幕设置</div>
+    <div class="form-group">
+      <label for="subtitlePreset">字幕预设</label>
+      <select id="subtitlePreset">
+        <option value="" disabled selected class="loading-placeholder">加载中...</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="section">
     <div class="section-title">配音设置</div>
     <div class="form-group">
       <label for="ttsVoice">配音声音</label>
       <select id="ttsVoice">
-        <option value="zh-CN-XiaoxiaoNeural">晓晓（女声）</option>
-        <option value="zh-CN-YunxiNeural">云希（男声）</option>
-        <option value="zh-CN-YunjianNeural">云健（男声）</option>
-        <option value="zh-CN-XiaoyiNeural">晓伊（女声）</option>
+        <option value="" disabled selected class="loading-placeholder">加载中...</option>
       </select>
     </div>
   </div>
