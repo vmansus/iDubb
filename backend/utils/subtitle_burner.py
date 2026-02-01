@@ -326,7 +326,9 @@ class SubtitleBurner:
         self,
         srt_path: Path,
         output_path: Path,
-        style: SubtitleStyle
+        style: SubtitleStyle,
+        video_width: int = 0,
+        video_height: int = 0
     ) -> bool:
         """
         Convert SRT to ASS with embedded styles for fast rendering.
@@ -339,6 +341,8 @@ class SubtitleBurner:
             srt_path: Input SRT file
             output_path: Output ASS file
             style: Subtitle styling
+            video_width: Video width for accurate max_width calculation
+            video_height: Video height for font scaling calculation
 
         Returns:
             True if successful
@@ -403,29 +407,39 @@ Style: Default,{style.font_name},{style.font_size},{style.primary_color},&H00000
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
 
-            # Calculate max characters per line based on max_width and font_size
-            # For vertical video (9:16), width is ~1080px
-            # For horizontal video (16:9), width is ~1920px
-            # Estimate chars per line: (video_width * max_width% / font_size) * 0.5 (CJK adjustment)
-            # But we don't have video_width here, so use a conservative estimate
+            # Calculate max characters per line to match frontend preview behavior
             # 
-            # For font_size 14-16 on vertical video: ~15-20 chars at 90% width
-            # For font_size 24-28 on horizontal video: ~25-35 chars at 90% width
+            # Frontend uses CSS: max-width: X% + word-break: break-word
+            # ASS uses PlayResX=384, PlayResY=288 as reference resolution
+            # Font sizes scale by: actual_size = font_size * (video_height / 288)
             #
-            # Use font_size as indicator: smaller font = more chars per line
+            # Calculation:
+            # 1. available_width = video_width * max_width_pct / 100
+            # 2. scale_factor = video_height / 288 (ASS reference height)
+            # 3. actual_font_width = font_size * scale_factor (approx 1 Chinese char width)
+            # 4. chars_per_line = available_width / actual_font_width
+            #
             font_size = getattr(style, 'font_size', 24)
-            if font_size <= 16:
-                # Small font (vertical video style) - fewer chars per line
-                base_chars = 22
-            elif font_size <= 22:
-                # Medium font
-                base_chars = 30
-            else:
-                # Large font
-                base_chars = 40
             
-            max_chars_per_line = int(base_chars * max_width_pct / 100)
-            max_chars_per_line = max(8, min(max_chars_per_line, 60))  # Clamp to reasonable range
+            if video_width > 0 and video_height > 0:
+                # Accurate calculation with video dimensions
+                scale_factor = video_height / 288.0  # ASS reference height
+                actual_font_width = font_size * scale_factor
+                available_width = video_width * max_width_pct / 100
+                max_chars_per_line = int(available_width / actual_font_width)
+                logger.debug(f"[ASS] video={video_width}x{video_height}, scale={scale_factor:.2f}, "
+                           f"actual_font_width={actual_font_width:.1f}px, available_width={available_width:.0f}px")
+            else:
+                # Fallback: estimate based on font size
+                if font_size <= 16:
+                    base_chars = 22
+                elif font_size <= 22:
+                    base_chars = 30
+                else:
+                    base_chars = 40
+                max_chars_per_line = int(base_chars * max_width_pct / 100)
+            
+            max_chars_per_line = max(6, min(max_chars_per_line, 80))  # Clamp to reasonable range
             logger.debug(f"[ASS] max_width={max_width_pct}%, font_size={font_size}, max_chars_per_line={max_chars_per_line}")
 
             def wrap_text(text: str, max_chars: int) -> str:
@@ -522,7 +536,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         video_path: Path,
         subtitle_path: Path,
         output_path: Path,
-        style: SubtitleStyle = None
+        style: SubtitleStyle = None,
+        video_width: int = 0,
+        video_height: int = 0
     ) -> bool:
         """
         Burn subtitles into video
@@ -532,6 +548,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             subtitle_path: Subtitle file (SRT, ASS, VTT)
             output_path: Output video file
             style: Subtitle styling options
+            video_width: Video width in pixels (for max_width calculation)
+            video_height: Video height in pixels (for scaling calculation)
 
         Returns:
             True if successful
@@ -554,11 +572,31 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             # if resegmented_subtitle.exists():
             #     fixed_subtitle = resegmented_subtitle
 
+            # Get video dimensions if not provided (needed for accurate max_width calculation)
+            if video_width == 0 or video_height == 0:
+                try:
+                    import subprocess
+                    import json
+                    probe_cmd = [
+                        "ffprobe", "-v", "quiet", "-print_format", "json",
+                        "-show_streams", "-select_streams", "v:0", str(video_path)
+                    ]
+                    result = subprocess.run(probe_cmd, capture_output=True, text=True)
+                    if result.returncode == 0:
+                        probe_data = json.loads(result.stdout)
+                        streams = probe_data.get("streams", [])
+                        if streams:
+                            video_width = streams[0].get("width", 0)
+                            video_height = streams[0].get("height", 0)
+                            logger.debug(f"[burn_subtitles] Detected video dimensions: {video_width}x{video_height}")
+                except Exception as e:
+                    logger.warning(f"Failed to get video dimensions: {e}")
+
             # === OPTIMIZATION: Convert SRT to ASS with embedded styles ===
             # Using force_style with SRT is extremely slow (100x+ slower)
             # Converting to ASS first makes subtitle rendering much faster
             styled_ass = temp_dir / "styled_subtitle.ass"
-            ass_created = self._create_styled_ass(fixed_subtitle, styled_ass, style)
+            ass_created = self._create_styled_ass(fixed_subtitle, styled_ass, style, video_width, video_height)
 
             if ass_created and styled_ass.exists():
                 # Use optimized ASS path (same as dual subtitles)

@@ -2433,13 +2433,17 @@ class VideoPipeline:
                             task.video_path,
                             task.translated_subtitle_path,
                             task.final_video_path,
-                            style=single_style
+                            style=single_style,
+                            video_width=video_dimensions.width if video_dimensions else 0,
+                            video_height=video_dimensions.height if video_dimensions else 0
                         )
                     else:
                         await self.subtitle_burner.burn_subtitles(
                             task.video_path,
                             task.translated_subtitle_path,
-                            task.final_video_path
+                            task.final_video_path,
+                            video_width=video_dimensions.width if video_dimensions else 0,
+                            video_height=video_dimensions.height if video_dimensions else 0
                         )
                 elif subtitle_mode == "original_only" and task.subtitle_path and task.subtitle_path.exists():
                     # Single subtitle (original only)
@@ -2453,27 +2457,35 @@ class VideoPipeline:
                             task.video_path,
                             task.subtitle_path,
                             task.final_video_path,
-                            style=single_style
+                            style=single_style,
+                            video_width=video_dimensions.width if video_dimensions else 0,
+                            video_height=video_dimensions.height if video_dimensions else 0
                         )
                     else:
                         await self.subtitle_burner.burn_subtitles(
                             task.video_path,
                             task.subtitle_path,
-                            task.final_video_path
+                            task.final_video_path,
+                            video_width=video_dimensions.width if video_dimensions else 0,
+                            video_height=video_dimensions.height if video_dimensions else 0
                         )
                 elif task.translated_subtitle_path and task.translated_subtitle_path.exists():
                     # Fallback: translated subtitle available
                     await self.subtitle_burner.burn_subtitles(
                         task.video_path,
                         task.translated_subtitle_path,
-                        task.final_video_path
+                        task.final_video_path,
+                        video_width=video_dimensions.width if video_dimensions else 0,
+                        video_height=video_dimensions.height if video_dimensions else 0
                     )
                 elif task.subtitle_path and task.subtitle_path.exists():
                     # Fallback: original subtitle available
                     await self.subtitle_burner.burn_subtitles(
                         task.video_path,
                         task.subtitle_path,
-                        task.final_video_path
+                        task.final_video_path,
+                        video_width=video_dimensions.width if video_dimensions else 0,
+                        video_height=video_dimensions.height if video_dimensions else 0
                     )
                 else:
                     # No subtitles available, just copy
