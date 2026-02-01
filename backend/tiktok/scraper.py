@@ -260,8 +260,8 @@ def extract_video_from_api_item(item: Dict[str, Any]) -> Optional[Dict[str, Any]
                 from settings_store import settings_store
                 import pytz
                 
-                # Get timezone from global settings
-                tz_name = settings_store.load().timezone or 'Asia/Shanghai'
+                # Get timezone from processing settings
+                tz_name = settings_store.load().processing.timezone or 'Asia/Shanghai'
                 tz = pytz.timezone(tz_name)
                 
                 # Convert Unix timestamp to timezone-aware datetime
