@@ -183,8 +183,9 @@ async function getSettings() {
 }
 
 async function createTask(videoUrl, options) {
-  const settings = await getSettings();
-  const apiUrl = settings.apiUrl || DEFAULT_SETTINGS.apiUrl;
+  // 强制使用默认 API URL，避免缓存问题
+  const apiUrl = DEFAULT_SETTINGS.apiUrl;
+  console.log('[iDubb] 使用 API:', apiUrl);
 
   showNotification('处理中', `正在创建任务: ${videoUrl.substring(0, 50)}...`);
 
