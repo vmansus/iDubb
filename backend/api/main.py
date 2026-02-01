@@ -623,6 +623,11 @@ class CreateTaskRequest(BaseModel):
     whisper_model: str = Field("auto", description="Whisper model: auto, faster:tiny, faster:base, faster:small, etc.")
     whisper_device: str = Field("auto", description="Whisper device: auto, cpu, cuda, mps (mps only for openai backend)")
 
+    # OCR settings (for videos with text overlays instead of speech)
+    use_ocr: bool = Field(False, description="Use OCR to extract text from video frames")
+    ocr_engine: str = Field("paddleocr", description="OCR engine: paddleocr, openai, anthropic")
+    ocr_frame_interval: float = Field(0.5, description="Extract frame every N seconds for OCR")
+
     # Subtitle options
     add_subtitles: bool = Field(True, description="Add subtitles to video")
     dual_subtitles: bool = Field(True, description="Show both original and translated")
@@ -849,6 +854,9 @@ async def create_task(request: Request, task_request: CreateTaskRequest, backgro
         whisper_backend=task_request.whisper_backend,
         whisper_model=task_request.whisper_model,
         whisper_device=task_request.whisper_device,
+        use_ocr=task_request.use_ocr,
+        ocr_engine=task_request.ocr_engine,
+        ocr_frame_interval=task_request.ocr_frame_interval,
         translation_engine=task_request.translation_engine,
         video_quality=task_request.video_quality,
         format_id=task_request.format_id,
@@ -896,6 +904,9 @@ async def create_task(request: Request, task_request: CreateTaskRequest, backgro
         "whisper_backend": options.whisper_backend,
         "whisper_model": options.whisper_model,
         "whisper_device": options.whisper_device,
+        "use_ocr": options.use_ocr,
+        "ocr_engine": options.ocr_engine,
+        "ocr_frame_interval": options.ocr_frame_interval,
         "translation_engine": options.translation_engine,
         "video_quality": options.video_quality,
         "format_id": options.format_id,
