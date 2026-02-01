@@ -90,7 +90,7 @@ class VideoOCR:
                 from paddleocr import PaddleOCR
                 logger.info("Initializing PaddleOCR (this may take a moment on first run)...")
                 self._paddle_ocr = PaddleOCR(
-                    use_angle_cls=True,
+                    use_textline_orientation=True,
                     lang='en',
                     
                     
@@ -252,12 +252,28 @@ class VideoOCR:
                 return ""
             
             texts = []
-            for line in result[0]:
-                if line and len(line) >= 2:
-                    text, confidence = line[1]
-                    logger.debug(f"PaddleOCR detected: '{text}' (confidence: {confidence:.2f})")
-                    if confidence > 0.5:
-                        texts.append(text)
+            # Handle new PaddleOCR format (list of dicts with 'rec_texts' and 'rec_scores')
+            for item in result:
+                if hasattr(item, 'rec_texts') and hasattr(item, 'rec_scores'):
+                    # New format: object with rec_texts and rec_scores
+                    for text, score in zip(item.rec_texts, item.rec_scores):
+                        if score > 0.5:
+                            logger.debug(f"PaddleOCR detected: '{text}' (confidence: {score:.2f})")
+                            texts.append(text)
+                elif isinstance(item, dict):
+                    # Dict format
+                    if 'rec_texts' in item:
+                        for text, score in zip(item['rec_texts'], item.get('rec_scores', [1.0]*len(item['rec_texts']))):
+                            if score > 0.5:
+                                texts.append(text)
+                elif isinstance(item, list):
+                    # Old format: list of [box, (text, confidence)]
+                    for line in item:
+                        if line and len(line) >= 2:
+                            if isinstance(line[1], tuple) and len(line[1]) == 2:
+                                text, confidence = line[1]
+                                if confidence > 0.5:
+                                    texts.append(text)
             return " ".join(texts)
         
         loop = asyncio.get_event_loop()
