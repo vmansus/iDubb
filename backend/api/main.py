@@ -444,6 +444,9 @@ async def create_task_from_subscription(subscription, video: SubscriptionVideoIn
         "proofreading_optimization_level": options.proofreading_optimization_level,
         # Directory
         "directory": options.directory,
+        "use_ocr": options.use_ocr,
+        "ocr_engine": options.ocr_engine,
+        "ocr_frame_interval": options.ocr_frame_interval,
     }
     await task_persistence.save_task_created(task_id, options_dict, "pending", task.message, directory=subscription.directory)
 
@@ -667,6 +670,11 @@ class CreateTaskRequest(BaseModel):
     metadata_preset_id: Optional[str] = Field(None, description="Metadata preset ID for title prefix and signature")
     use_ai_preset_selection: bool = Field(False, description="Use AI to automatically select best preset")
 
+    # OCR options (alternative to speech transcription)
+    use_ocr: bool = Field(False, description="Use OCR to extract text from video frames instead of Whisper")
+    ocr_engine: str = Field("paddleocr", description="OCR engine: paddleocr (free local), openai, anthropic")
+    ocr_frame_interval: float = Field(0.5, description="Extract frame every N seconds for OCR")
+
     # Use global settings as defaults
     use_global_settings: bool = Field(True, description="Use global settings as defaults")
 
@@ -885,6 +893,9 @@ async def create_task(request: Request, task_request: CreateTaskRequest, backgro
         metadata_preset_id=task_request.metadata_preset_id,
         use_ai_preset_selection=task_request.use_ai_preset_selection,
         directory=task_request.directory,
+        use_ocr=task_request.use_ocr,
+        ocr_engine=task_request.ocr_engine,
+        ocr_frame_interval=task_request.ocr_frame_interval,
     )
 
     task = ProcessingTask(task_id=task_id, options=options)
@@ -935,6 +946,9 @@ async def create_task(request: Request, task_request: CreateTaskRequest, backgro
         "metadata_preset_id": options.metadata_preset_id,
         "use_ai_preset_selection": options.use_ai_preset_selection,
         "directory": options.directory,
+        "use_ocr": options.use_ocr,
+        "ocr_engine": options.ocr_engine,
+        "ocr_frame_interval": options.ocr_frame_interval,
     }
     await task_persistence.save_task_created(task_id, options_dict, "pending", "任务已创建", directory=task_request.directory)
 
@@ -2968,6 +2982,10 @@ class UpdateOptionsRequest(BaseModel):
     upload_douyin: Optional[bool] = None
     upload_xiaohongshu: Optional[bool] = None
     bilibili_account_uid: Optional[str] = None  # Specific Bilibili account
+    # OCR options
+    use_ocr: Optional[bool] = None
+    ocr_engine: Optional[str] = None
+    ocr_frame_interval: Optional[float] = None
 
 
 @app.put("/api/tasks/{task_id}/options")
@@ -3032,6 +3050,9 @@ async def update_task_options(task_id: str, request: UpdateOptionsRequest):
             "upload_douyin": opts.upload_douyin,
             "upload_xiaohongshu": opts.upload_xiaohongshu,
             "bilibili_account_uid": opts.bilibili_account_uid,
+            "use_ocr": opts.use_ocr,
+            "ocr_engine": opts.ocr_engine,
+            "ocr_frame_interval": opts.ocr_frame_interval,
             "custom_title": opts.custom_title,
             "custom_description": opts.custom_description,
             "custom_tags": opts.custom_tags,
@@ -3093,6 +3114,9 @@ async def get_task_options(task_id: str):
             "upload_douyin": opts.upload_douyin,
             "upload_xiaohongshu": opts.upload_xiaohongshu,
             "bilibili_account_uid": opts.bilibili_account_uid,
+            "use_ocr": opts.use_ocr,
+            "ocr_engine": opts.ocr_engine,
+            "ocr_frame_interval": opts.ocr_frame_interval,
         }
     }
 
@@ -6267,6 +6291,9 @@ async def batch_create_trending_tasks(request: TrendingBatchCreateRequest):
                     "proofreading_optimization_level": options.proofreading_optimization_level,
                     # Directory
                     "directory": options.directory,
+        "use_ocr": options.use_ocr,
+        "ocr_engine": options.ocr_engine,
+        "ocr_frame_interval": options.ocr_frame_interval,
                 }
                 await task_persistence.save_task_created(
                     task_id, options_dict, "pending", task.message,

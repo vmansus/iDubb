@@ -462,30 +462,29 @@ class VideoPipeline:
         if not task.subtitle_path or not task.subtitle_path.exists():
             return False
 
-        segments = self._parse_srt_file(task.subtitle_path)
-        if not segments:
+        segments_dicts = self._parse_srt_file(task.subtitle_path)
+        if not segments_dicts:
             return False
 
-        # Create a mock transcription result
-        from dataclasses import dataclass
-        from typing import List, Optional
-
-        @dataclass
-        class RestoredTranscription:
-            success: bool
-            language: str
-            segments: List[Dict[str, Any]]
-            text: str
-            error: Optional[str] = None
+        # Convert dict segments to TranscriptSegment objects
+        from transcription import Transcription, TranscriptSegment
+        
+        segments = [
+            TranscriptSegment(
+                start=seg["start"],
+                end=seg["end"],
+                text=seg["text"]
+            )
+            for seg in segments_dicts
+        ]
 
         # Detect language from task options or default
         language = task.options.source_language if task.options.source_language != "auto" else "en"
 
-        transcription = RestoredTranscription(
-            success=True,
-            language=language,
+        transcription = Transcription(
+            text=" ".join(seg.text for seg in segments),
             segments=segments,
-            text=" ".join(seg["text"] for seg in segments)
+            language=language
         )
 
         self._transcription_cache[task.task_id] = transcription

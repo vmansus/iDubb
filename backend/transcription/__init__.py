@@ -5,9 +5,13 @@ Provides:
 - WhisperTranscriber: Standard Whisper transcription
 - FasterWhisperTranscriber: Faster transcription using CTranslate2 (4-8x faster)
 - WhisperXTranscriber: Enhanced transcription with word-level alignment
+- TranscriptSegment, TranscriptionResult, Transcription: Data structures for transcription results
 - WordSegment, TranscriptSegmentWithWords: Word-level timing data structures
 """
-from .whisper_transcriber import WhisperTranscriber
+from dataclasses import dataclass
+from typing import List, Optional
+
+from .whisper_transcriber import WhisperTranscriber, TranscriptSegment, TranscriptionResult
 from .faster_transcriber import FasterWhisperTranscriber
 from .whisperx_transcriber import (
     WhisperXTranscriber,
@@ -15,6 +19,22 @@ from .whisperx_transcriber import (
     WordSegment,
     TranscriptSegmentWithWords,
 )
+
+
+@dataclass
+class Transcription:
+    """Generic transcription result for internal use"""
+    text: str  # Full transcribed text
+    segments: List[TranscriptSegment]
+    language: str
+    success: bool = True
+    error: Optional[str] = None
+    
+    # For compatibility with TranscriptionResult
+    @property
+    def full_text(self) -> str:
+        return self.text
+
 
 __all__ = [
     # Standard Whisper
@@ -26,4 +46,8 @@ __all__ = [
     "WhisperXResult",
     "WordSegment",
     "TranscriptSegmentWithWords",
+    # Data classes
+    "TranscriptSegment",
+    "TranscriptionResult",
+    "Transcription",
 ]

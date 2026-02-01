@@ -33,6 +33,13 @@ class TranscriptionResult:
     cancelled: bool = False
 
 
+
+def _get_seg_val(seg, key, default=None):
+    """Get segment value, supporting both dict and object formats"""
+    if isinstance(seg, dict):
+        return seg.get(key, default) if default is not None else seg[key]
+    return getattr(seg, key, default) if default is not None else getattr(seg, key)
+
 class FasterWhisperTranscriber:
     """
     Transcriber using faster-whisper (CTranslate2 backend).
@@ -337,7 +344,7 @@ class FasterWhisperTranscriber:
         result = []
         
         for seg in segments:
-            text = seg.get("text", "").strip()
+            text = _get_seg_val(seg, "text", "").strip()
             
             # Short enough - keep as is
             if len(text) <= max_chars:
@@ -493,7 +500,7 @@ class FasterWhisperTranscriber:
     
     def _split_by_chars(self, seg: Dict[str, Any], max_chars: int, is_cjk: bool) -> List[Dict[str, Any]]:
         """Split segment by character count with proportional timing (fallback when no word timestamps)."""
-        text = seg.get("text", "").strip()
+        text = _get_seg_val(seg, "text", "").strip()
         total_chars = len(text)
         start = seg.get("start", 0)
         end = seg.get("end", 0)
@@ -575,9 +582,9 @@ class FasterWhisperTranscriber:
         """Convert segments to SRT format"""
         lines = []
         for i, seg in enumerate(segments, 1):
-            start = self._format_timestamp_srt(seg["start"])
-            end = self._format_timestamp_srt(seg["end"])
-            text = seg.get("text", "")
+            start = self._format_timestamp_srt(_get_seg_val(seg, "start"))
+            end = self._format_timestamp_srt(_get_seg_val(seg, "end"))
+            text = _get_seg_val(seg, "text", "")
             lines.append(f"{i}\n{start} --> {end}\n{text}\n")
         return "\n".join(lines)
 
@@ -585,9 +592,9 @@ class FasterWhisperTranscriber:
         """Convert segments to VTT format"""
         lines = ["WEBVTT\n"]
         for seg in segments:
-            start = self._format_timestamp_vtt(seg["start"])
-            end = self._format_timestamp_vtt(seg["end"])
-            text = seg.get("text", "")
+            start = self._format_timestamp_vtt(_get_seg_val(seg, "start"))
+            end = self._format_timestamp_vtt(_get_seg_val(seg, "end"))
+            text = _get_seg_val(seg, "text", "")
             lines.append(f"{start} --> {end}\n{text}\n")
         return "\n".join(lines)
 

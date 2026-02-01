@@ -662,6 +662,15 @@ Lines to translate:
         return results
 
 
+
+
+def _get_seg_attr(seg, attr):
+    """Get segment attribute, supporting both dict and object formats"""
+    if isinstance(seg, dict):
+        return seg[attr]
+    return getattr(seg, attr)
+
+
 class Translator:
     """Multi-service translator supporting multiple engines"""
 
@@ -975,7 +984,8 @@ class Translator:
             logger.info("Translation cancelled before starting")
             raise Exception("用户手动停止")
 
-        texts = [seg.text for seg in segments]
+        # Handle both dict and object formats
+        texts = [seg["text"] if isinstance(seg, dict) else seg.text for seg in segments]
 
         # For AI engines (GPT/Claude/DeepSeek), use smart chunking
         if self.engine_name in ["gpt", "claude", "deepseek"]:
@@ -1037,9 +1047,9 @@ class Translator:
             translated_segments = []
             for seg, translated_text in zip(segments, translated_texts):
                 translated_segments.append(TranscriptSegment(
-                    start=seg.start,
-                    end=seg.end,
-                    text=translated_text or seg.text
+                    start=_get_seg_attr(seg, "start"),
+                    end=_get_seg_attr(seg, "end"),
+                    text=translated_text or _get_seg_attr(seg, "text")
                 ))
             return translated_segments
 
@@ -1049,9 +1059,9 @@ class Translator:
         translated_segments = []
         for seg, trans in zip(segments, translations):
             translated_segments.append(TranscriptSegment(
-                start=seg.start,
-                end=seg.end,
-                text=trans.translated_text if trans.success else seg.text
+                start=_get_seg_attr(seg, "start"),
+                end=_get_seg_attr(seg, "end"),
+                text=trans.translated_text if trans.success else _get_seg_attr(seg, "text")
             ))
 
         return translated_segments
