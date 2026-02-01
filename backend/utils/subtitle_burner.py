@@ -403,11 +403,43 @@ Style: Default,{style.font_name},{style.font_size},{style.primary_color},&H00000
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
 
+            # Calculate max characters per line based on max_width
+            # Estimate: Chinese chars ~2x width of Latin chars, avg ~1.5 chars per em
+            # For font_size and max_width%, estimate chars that fit
+            # Conservative estimate: 1080p video, font_size 24-28 = ~40-50 Chinese chars at 100% width
+            base_chars = 45  # Approximate Chinese chars at 100% width for typical font
+            max_chars_per_line = int(base_chars * max_width_pct / 100)
+            max_chars_per_line = max(10, min(max_chars_per_line, 100))  # Clamp to reasonable range
+            logger.debug(f"[ASS] max_width={max_width_pct}%, max_chars_per_line={max_chars_per_line}")
+
+            def wrap_text(text: str, max_chars: int) -> str:
+                """Wrap text to fit within max characters per line"""
+                lines = []
+                current_line = ""
+                # Split by existing line breaks first
+                for segment in text.split('\n'):
+                    words = list(segment)  # Split into characters for CJK
+                    for char in words:
+                        if len(current_line) >= max_chars:
+                            lines.append(current_line)
+                            current_line = char
+                        else:
+                            current_line += char
+                    if current_line:
+                        lines.append(current_line)
+                        current_line = ""
+                if current_line:
+                    lines.append(current_line)
+                return '\\N'.join(lines)
+
             events = []
             for _, start, end, text in matches:
                 start_ass = srt_time_to_ass(start)
                 end_ass = srt_time_to_ass(end)
                 text_clean = text.strip().replace('\n', '\\N')
+                # Apply max_width wrapping if needed
+                if max_width_pct < 90:
+                    text_clean = wrap_text(text.strip(), max_chars_per_line)
                 events.append(f"Dialogue: 0,{start_ass},{end_ass},Default,,0,0,0,,{text_clean}")
 
             ass_content += '\n'.join(events)
