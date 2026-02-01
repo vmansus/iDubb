@@ -42,11 +42,12 @@ function getDefaultMode() {
 
 // Get default platforms from saved settings
 function getDefaultPlatforms() {
-  if (!savedSettings) return { douyin: true, xiaohongshu: false };
+  if (!savedSettings) return { douyin: true, xiaohongshu: false, bilibili: false };
   
   return {
     douyin: savedSettings.uploadDouyin !== undefined ? savedSettings.uploadDouyin : true,
-    xiaohongshu: savedSettings.uploadXiaohongshu !== undefined ? savedSettings.uploadXiaohongshu : false
+    xiaohongshu: savedSettings.uploadXiaohongshu !== undefined ? savedSettings.uploadXiaohongshu : false,
+    bilibili: savedSettings.uploadBilibili !== undefined ? savedSettings.uploadBilibili : false
   };
 }
 
@@ -214,6 +215,7 @@ function addQuickActionButton() {
         <div class="idubb-menu-section">发布平台</div>
         <div class="idubb-menu-item${defaultPlatforms.douyin ? ' selected' : ''}" data-action="douyin">📱 抖音</div>
         <div class="idubb-menu-item${defaultPlatforms.xiaohongshu ? ' selected' : ''}" data-action="xiaohongshu">📕 小红书</div>
+        <div class="idubb-menu-item${defaultPlatforms.bilibili ? ' selected' : ''}" data-action="bilibili">📺 哔哩哔哩</div>
         <div class="idubb-menu-item idubb-menu-submit" data-action="submit">🚀 开始处理</div>
       </div>
     `;
@@ -287,12 +289,17 @@ function addQuickActionButton() {
           menuItem.classList.toggle('selected', selectedPlatforms.xiaohongshu);
           return;
         }
+        if (action === 'bilibili') {
+          selectedPlatforms.bilibili = !selectedPlatforms.bilibili;
+          menuItem.classList.toggle('selected', selectedPlatforms.bilibili);
+          return;
+        }
         
         // 提交按钮
         if (action === 'submit') {
           const videoUrl = videoLink.href;
           
-          if (!selectedPlatforms.douyin && !selectedPlatforms.xiaohongshu) {
+          if (!selectedPlatforms.douyin && !selectedPlatforms.xiaohongshu && !selectedPlatforms.bilibili) {
             showToast('⚠️ 请至少选择一个发布平台');
             return;
           }
@@ -301,6 +308,7 @@ function addQuickActionButton() {
           const options = {
             uploadDouyin: selectedPlatforms.douyin,
             uploadXiaohongshu: selectedPlatforms.xiaohongshu,
+            uploadBilibili: selectedPlatforms.bilibili,
             processingMode: selectedMode,
             // 基础设置
             apiUrl: savedSettings?.apiUrl,
@@ -519,6 +527,9 @@ function addIdubbOptionToMenu(menuContainer) {
     <button class="idubb-tiktok-btn idubb-platform-btn${defaultPlatforms.xiaohongshu ? ' selected' : ''}" data-platform="xiaohongshu" style="display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 16px; background: ${defaultPlatforms.xiaohongshu ? 'rgba(254,44,85,0.2)' : 'none'}; border: none; color: white; cursor: pointer; font-size: 13px; text-align: left;">
       <span>📕</span> 小红书${defaultPlatforms.xiaohongshu ? ' ✓' : ''}
     </button>
+    <button class="idubb-tiktok-btn idubb-platform-btn${defaultPlatforms.bilibili ? ' selected' : ''}" data-platform="bilibili" style="display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 16px; background: ${defaultPlatforms.bilibili ? 'rgba(254,44,85,0.2)' : 'none'}; border: none; color: white; cursor: pointer; font-size: 13px; text-align: left;">
+      <span>📺</span> 哔哩哔哩${defaultPlatforms.bilibili ? ' ✓' : ''}
+    </button>
     <div style="height: 1px; background: rgba(255,255,255,0.1); margin: 8px 0;"></div>
     <button class="idubb-tiktok-btn idubb-submit-btn" data-action="submit" style="display: flex; align-items: center; justify-content: center; gap: 8px; width: calc(100% - 16px); margin: 8px; padding: 12px 16px; background: #fe2c55; border: none; border-radius: 4px; color: white; cursor: pointer; font-size: 14px; font-weight: bold;">
       🚀 开始处理
@@ -585,7 +596,7 @@ function addIdubbOptionToMenu(menuContainer) {
       if (action === 'submit') {
         const videoUrl = getCurrentVideoUrl() || window.location.href;
         
-        if (!tiktokMenuState.platforms.douyin && !tiktokMenuState.platforms.xiaohongshu) {
+        if (!tiktokMenuState.platforms.douyin && !tiktokMenuState.platforms.xiaohongshu && !tiktokMenuState.platforms.bilibili) {
           showToast('⚠️ 请至少选择一个发布平台');
           return;
         }
@@ -594,6 +605,7 @@ function addIdubbOptionToMenu(menuContainer) {
         const options = {
           uploadDouyin: tiktokMenuState.platforms.douyin,
           uploadXiaohongshu: tiktokMenuState.platforms.xiaohongshu,
+          uploadBilibili: tiktokMenuState.platforms.bilibili,
           processingMode: tiktokMenuState.mode,
           // 基础设置
           apiUrl: savedSettings?.apiUrl,
