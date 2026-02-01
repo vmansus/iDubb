@@ -93,7 +93,7 @@ class VideoOCR:
                     use_angle_cls=True,
                     lang='en',
                     
-                    use_gpu=False,
+                    
                 )
                 logger.info("PaddleOCR initialized successfully")
             except ImportError:
