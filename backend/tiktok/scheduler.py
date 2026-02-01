@@ -208,9 +208,42 @@ class TikTokScheduler:
 
         try:
             # Try Playwright scraper first
-            from .scraper import scrape_tiktok_tag, PLAYWRIGHT_AVAILABLE
+            from .scraper import scrape_tiktok_tag, scrape_tiktok_discover, PLAYWRIGHT_AVAILABLE
             
             if PLAYWRIGHT_AVAILABLE:
+                # For special tags, use discover page for better results
+                if tag.lower() in ['trending', 'fyp', 'foryou', 'explore', 'discover', 'common.all']:
+                    logger.info(f"Using discover scraper for #{tag}")
+                    scraped = await scrape_tiktok_discover(
+                        max_videos=self._max_videos_per_tag * 2,
+                        timeout=30000
+                    )
+                    if scraped:
+                        # Apply filters
+                        for video in scraped:
+                            duration = video.get('duration')
+                            view_count = video.get('view_count')
+                            like_count = video.get('like_count')
+                            
+                            if duration is not None and duration > 0:
+                                if self._max_duration > 0 and duration > self._max_duration:
+                                    continue
+                            if view_count is not None and view_count > 0:
+                                if view_count < self._min_view_count:
+                                    continue
+                            if like_count is not None and like_count > 0:
+                                if like_count < self._min_like_count:
+                                    continue
+                            
+                            videos.append(video)
+                            
+                            if len(videos) >= self._max_videos_per_tag:
+                                break
+                        
+                        if videos:
+                            return videos
+                
+                # For regular tags, use tag scraper
                 logger.info(f"Using Playwright to scrape TikTok #{tag}")
                 scraped = await scrape_tiktok_tag(
                     tag, 
