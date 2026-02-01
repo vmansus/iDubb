@@ -542,20 +542,34 @@ class VideoOCR:
             return 64
     
     def _text_similarity(self, text1: str, text2: str) -> float:
-        """Calculate similarity ratio between two texts (0.0 to 1.0) using edit distance
+        """Calculate similarity ratio between two texts (0.0 to 1.0)
         
-        Uses SequenceMatcher which is more robust to OCR errors like:
-        - "Hello World" vs "Hell0 World" (0 instead of o)
-        - "Hello World" vs "Hello Wor1d" (1 instead of l)
+        Uses combination of:
+        1. SequenceMatcher (edit distance) - handles OCR char errors like 'o' vs '0'
+        2. Word set overlap (Jaccard) - handles word reordering from multi-line OCR
+        
+        Returns the HIGHER of the two scores to be lenient.
         """
         if not text1 or not text2:
             return 0.0
         n1, n2 = self._normalize_text(text1), self._normalize_text(text2)
         if not n1 or not n2:
             return 0.0
-        # Use SequenceMatcher for edit-distance based similarity
-        # More robust to OCR character substitution errors
-        return SequenceMatcher(None, n1, n2).ratio()
+        
+        # Method 1: Edit distance (good for char substitutions)
+        edit_similarity = SequenceMatcher(None, n1, n2).ratio()
+        
+        # Method 2: Word set overlap (good for word reordering)
+        words1, words2 = set(n1.split()), set(n2.split())
+        if words1 and words2:
+            intersection = len(words1 & words2)
+            union = len(words1 | words2)
+            word_similarity = intersection / union if union > 0 else 0.0
+        else:
+            word_similarity = 0.0
+        
+        # Return the higher score (be lenient - if either method thinks they're similar, trust it)
+        return max(edit_similarity, word_similarity)
     
     def segments_to_srt(self, segments: List[OCRSegment]) -> str:
         """Convert segments to SRT format"""
