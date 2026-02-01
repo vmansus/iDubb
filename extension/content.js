@@ -186,10 +186,127 @@ function showToast(message) {
   }, 3000);
 }
 
+// Inject our option into TikTok's context menu
+function injectIntoTikTokMenu() {
+  // Watch for TikTok's context menu to appear
+  const observer = new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      for (const node of mutation.addedNodes) {
+        if (node.nodeType !== Node.ELEMENT_NODE) continue;
+        
+        // TikTok 菜单通常包含这些选项
+        const menuContainer = node.querySelector ? 
+          (node.querySelector('[data-e2e="video-share-container"]') || 
+           node.querySelector('[class*="DivContextMenu"]') ||
+           node.querySelector('[class*="ContextMenu"]')) : null;
+        
+        // 或者检查是否是菜单本身
+        const isMenu = node.textContent && 
+          (node.textContent.includes('下载视频') || 
+           node.textContent.includes('Download video') ||
+           node.textContent.includes('复制链接') ||
+           node.textContent.includes('Copy link'));
+        
+        if (menuContainer || isMenu) {
+          const menu = menuContainer || node;
+          addIdubbOptionToMenu(menu);
+        }
+      }
+    }
+  });
+
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true
+  });
+}
+
+// Add iDubb option to TikTok's menu
+function addIdubbOptionToMenu(menuContainer) {
+  // 避免重复添加
+  if (menuContainer.querySelector('.idubb-tiktok-option')) return;
+  
+  // 找到菜单项列表
+  const menuItems = menuContainer.querySelectorAll('button, [role="button"], [class*="MenuItem"], [class*="Item"]');
+  if (menuItems.length === 0) return;
+  
+  // 找到最后一个菜单项作为参考
+  const lastItem = menuItems[menuItems.length - 1];
+  if (!lastItem) return;
+  
+  // 创建分割线
+  const divider = document.createElement('div');
+  divider.style.cssText = 'height: 1px; background: rgba(255,255,255,0.1); margin: 8px 0;';
+  
+  // 创建我们的菜单项容器
+  const idubbContainer = document.createElement('div');
+  idubbContainer.className = 'idubb-tiktok-option';
+  idubbContainer.innerHTML = `
+    <div class="idubb-menu-header" style="padding: 8px 16px; color: #fe2c55; font-weight: bold; font-size: 12px;">
+      🚀 iDubb 一键发布
+    </div>
+    <button class="idubb-tiktok-btn" data-action="douyin" style="display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 16px; background: none; border: none; color: white; cursor: pointer; font-size: 14px; text-align: left;">
+      <span>📱</span> 发布到抖音
+    </button>
+    <button class="idubb-tiktok-btn" data-action="xiaohongshu" style="display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 16px; background: none; border: none; color: white; cursor: pointer; font-size: 14px; text-align: left;">
+      <span>📕</span> 发布到小红书
+    </button>
+    <button class="idubb-tiktok-btn" data-action="both" style="display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 16px; background: none; border: none; color: white; cursor: pointer; font-size: 14px; text-align: left;">
+      <span>🎯</span> 全部平台
+    </button>
+  `;
+  
+  // 添加 hover 效果
+  idubbContainer.querySelectorAll('.idubb-tiktok-btn').forEach(btn => {
+    btn.addEventListener('mouseenter', () => {
+      btn.style.background = 'rgba(255,255,255,0.1)';
+    });
+    btn.addEventListener('mouseleave', () => {
+      btn.style.background = 'none';
+    });
+    
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      const action = btn.dataset.action;
+      const videoUrl = getCurrentVideoUrl() || window.location.href;
+      
+      let uploadDouyin = action === 'douyin' || action === 'both';
+      let uploadXiaohongshu = action === 'xiaohongshu' || action === 'both';
+      
+      chrome.runtime.sendMessage({
+        action: 'createTask',
+        videoUrl: videoUrl,
+        options: { uploadDouyin, uploadXiaohongshu }
+      }, (response) => {
+        if (response && response.success) {
+          showToast('✅ 任务已创建: ' + videoUrl.substring(0, 50) + '...');
+        } else {
+          showToast('❌ ' + (response?.error || '发送失败'));
+        }
+      });
+      
+      // 关闭菜单 - 模拟点击其他地方
+      document.body.click();
+    });
+  });
+  
+  // 插入到菜单末尾
+  const parent = lastItem.parentElement || menuContainer;
+  parent.appendChild(divider);
+  parent.appendChild(idubbContainer);
+  
+  console.log('[iDubb] 已注入到 TikTok 菜单');
+}
+
 // Initialize
 function init() {
   // Add buttons to existing videos
   addQuickActionButton();
+  
+  // Inject into TikTok's context menu
+  injectIntoTikTokMenu();
 
   // Watch for new videos loaded (infinite scroll)
   const observer = new MutationObserver((mutations) => {
