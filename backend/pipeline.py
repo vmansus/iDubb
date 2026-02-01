@@ -13,6 +13,8 @@ Video Processing Pipeline - Core orchestration module
 每个步骤都是可中断的，支持单独重试和查看结果。
 """
 import asyncio
+import os
+import signal
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Any
@@ -239,14 +241,17 @@ class ProcessingTask:
 
     # Cancellation support
     _cancel_requested: bool = field(default=False, repr=False)
+    _active_processes: set = field(default_factory=set, repr=False)
+    _process_lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
 
     # Timing statistics
     processing_started_at: Optional[datetime] = None  # When processing started
     total_processing_time: Optional[float] = None  # Total time in seconds
 
     def request_cancel(self):
-        """Request cancellation of this task"""
+        """Request cancellation of this task and kill all active processes"""
         self._cancel_requested = True
+        self._kill_active_processes()
 
     def is_cancelled(self) -> bool:
         """Check if cancellation was requested"""
@@ -260,6 +265,51 @@ class ProcessingTask:
         """Check if cancelled and raise exception if so"""
         if self._cancel_requested:
             raise Exception("用户手动停止")
+
+    def register_process(self, proc):
+        """Register an active subprocess for tracking"""
+        self._active_processes.add(proc)
+        logger.debug(f"Registered process {proc.pid}, active count: {len(self._active_processes)}")
+
+    def unregister_process(self, proc):
+        """Unregister a subprocess when it completes"""
+        self._active_processes.discard(proc)
+        logger.debug(f"Unregistered process {proc.pid}, active count: {len(self._active_processes)}")
+
+    def _kill_active_processes(self):
+        """Kill all active subprocesses"""
+        if not self._active_processes:
+            return
+        
+        logger.info(f"Killing {len(self._active_processes)} active processes for task cancellation")
+        for proc in list(self._active_processes):
+            try:
+                if proc.returncode is None:  # Still running
+                    # Try to kill the entire process group for subprocess
+                    try:
+                        pgid = os.getpgid(proc.pid)
+                        os.killpg(pgid, signal.SIGTERM)
+                        logger.info(f"Sent SIGTERM to process group {pgid}")
+                    except (ProcessLookupError, PermissionError, OSError):
+                        # Fallback to killing just the process
+                        proc.terminate()
+                        logger.info(f"Terminated process {proc.pid}")
+            except Exception as e:
+                logger.warning(f"Failed to kill process {proc.pid}: {e}")
+        
+        # Give processes a moment to terminate, then force kill
+        import time
+        time.sleep(0.5)
+        
+        for proc in list(self._active_processes):
+            try:
+                if proc.returncode is None:
+                    proc.kill()
+                    logger.info(f"Force killed process {proc.pid}")
+            except Exception as e:
+                logger.warning(f"Failed to force kill process {proc.pid}: {e}")
+        
+        self._active_processes.clear()
 
     def __post_init__(self):
         """Initialize step tracking"""
@@ -1302,9 +1352,15 @@ class VideoPipeline:
                     engine=opts.ocr_engine,
                     api_key=api_key,
                     frame_interval=opts.ocr_frame_interval,
+                    cancel_check=task.is_cancelled,
                 )
                 
-                result = await ocr.extract_text(task.video_path)
+                try:
+                    result = await ocr.extract_text(task.video_path)
+                except Exception as e:
+                    # Ensure processes are killed on any error
+                    ocr.kill_active_processes()
+                    raise
                 
                 if not result.success:
                     raise Exception(f"OCR failed: {result.error}")

@@ -9,7 +9,7 @@ import logging
 import subprocess
 from pathlib import Path
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Callable
 import tempfile
 import json
 
@@ -43,6 +43,7 @@ class VideoOCR:
         model: Optional[str] = None,
         frame_interval: float = 0.5,
         min_text_duration: float = 0.5,
+        cancel_check: Optional[Callable[[], bool]] = None,
     ):
         self.engine = engine
         self.api_key = api_key
@@ -50,6 +51,8 @@ class VideoOCR:
         self.frame_interval = frame_interval
         self.min_text_duration = min_text_duration
         self._paddle_ocr = None
+        self.cancel_check = cancel_check
+        self._active_processes: List[asyncio.subprocess.Process] = []
         
         # Validate engine configuration early
         self._validate_engine()
@@ -152,6 +155,13 @@ class VideoOCR:
             return OCRResult(success=True, segments=segments)
             
         except Exception as e:
+            # Kill any active processes on error
+            self.kill_active_processes()
+            
+            # Re-raise cancellation exceptions
+            if "用户手动停止" in str(e):
+                raise
+            
             logger.error(f"Video OCR failed: {e}", exc_info=True)
             return OCRResult(success=False, segments=[], error=str(e))
     
@@ -173,6 +183,44 @@ class VideoOCR:
             logger.error(f"Failed to get video duration: {e}")
         return 0
     
+    def _check_cancelled(self):
+        """Check if cancellation was requested"""
+        if self.cancel_check and self.cancel_check():
+            raise Exception("用户手动停止")
+    
+    async def _run_subprocess(self, cmd: List[str], timeout: float = 30) -> Tuple[int, str, str]:
+        """Run subprocess with cancellation support"""
+        self._check_cancelled()
+        
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        self._active_processes.append(proc)
+        
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+            return proc.returncode, stdout.decode() if stdout else "", stderr.decode() if stderr else ""
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            raise
+        finally:
+            if proc in self._active_processes:
+                self._active_processes.remove(proc)
+    
+    def kill_active_processes(self):
+        """Kill all active subprocesses (called on cancellation)"""
+        for proc in self._active_processes:
+            try:
+                if proc.returncode is None:
+                    proc.kill()
+                    logger.info(f"Killed OCR subprocess {proc.pid}")
+            except Exception as e:
+                logger.warning(f"Failed to kill process: {e}")
+        self._active_processes.clear()
+
     async def _extract_frames(self, video_path: Path, duration: float) -> List[Tuple[Path, float]]:
         """Extract frames at regular intervals"""
         frames = []
@@ -188,16 +236,24 @@ class VideoOCR:
         logger.info(f"Will extract {len(times)} frames at {self.frame_interval}s intervals")
         
         for i, timestamp in enumerate(times):
+            # Check for cancellation before each frame
+            self._check_cancelled()
+            
             frame_path = temp_dir / f"frame_{i:04d}.jpg"
-            result = subprocess.run(
-                ["ffmpeg", "-y", "-ss", str(timestamp), "-i", str(video_path),
-                 "-frames:v", "1", "-q:v", "2", str(frame_path)],
-                capture_output=True, text=True
-            )
-            if result.returncode == 0 and frame_path.exists():
-                frames.append((frame_path, timestamp))
-            else:
-                logger.warning(f"Failed to extract frame at {timestamp}s: {result.stderr}")
+            try:
+                returncode, _, stderr = await self._run_subprocess(
+                    ["ffmpeg", "-y", "-ss", str(timestamp), "-i", str(video_path),
+                     "-frames:v", "1", "-q:v", "2", str(frame_path)],
+                    timeout=30
+                )
+                if returncode == 0 and frame_path.exists():
+                    frames.append((frame_path, timestamp))
+                else:
+                    logger.warning(f"Failed to extract frame at {timestamp}s: {stderr}")
+            except Exception as e:
+                if "用户手动停止" in str(e):
+                    raise
+                logger.warning(f"Failed to extract frame at {timestamp}s: {e}")
         
         logger.info(f"Successfully extracted {len(frames)}/{len(times)} frames")
         return frames
@@ -208,6 +264,9 @@ class VideoOCR:
         batch_size = 5
         
         for i in range(0, len(frames), batch_size):
+            # Check for cancellation before each batch
+            self._check_cancelled()
+            
             batch = frames[i:i + batch_size]
             logger.debug(f"Processing OCR batch {i//batch_size + 1}, frames {i+1}-{min(i+batch_size, len(frames))}")
             batch_results = await asyncio.gather(
