@@ -4,6 +4,7 @@ Subtitle Burning Module - Embed subtitles into video
 """
 import asyncio
 import subprocess
+import json
 import os
 from pathlib import Path
 from typing import Optional, List
@@ -575,8 +576,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             # Get video dimensions if not provided (needed for accurate max_width calculation)
             if video_width == 0 or video_height == 0:
                 try:
-                    import subprocess
-                    import json
                     probe_cmd = [
                         "ffprobe", "-v", "quiet", "-print_format", "json",
                         "-show_streams", "-select_streams", "v:0", str(video_path)
