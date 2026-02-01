@@ -893,9 +893,6 @@ async def create_task(request: Request, task_request: CreateTaskRequest, backgro
         metadata_preset_id=task_request.metadata_preset_id,
         use_ai_preset_selection=task_request.use_ai_preset_selection,
         directory=task_request.directory,
-        use_ocr=task_request.use_ocr,
-        ocr_engine=task_request.ocr_engine,
-        ocr_frame_interval=task_request.ocr_frame_interval,
     )
 
     task = ProcessingTask(task_id=task_id, options=options)
