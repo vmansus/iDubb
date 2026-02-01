@@ -2375,7 +2375,16 @@ class VideoPipeline:
                     else:
                         logger.warning(f"Subtitle preset not found: {preset_id}, using global defaults")
 
-                if opts.dual_subtitles and task.translated_subtitle_path and task.translated_subtitle_path.exists():
+                # Determine subtitle mode from preset or fallback to dual_subtitles option
+                subtitle_mode = "dual"  # default
+                if preset_data:
+                    subtitle_mode = preset_data.get('subtitle_mode', 'dual')
+                    logger.info(f"Using subtitle_mode from preset: {subtitle_mode}")
+                elif not opts.dual_subtitles:
+                    subtitle_mode = "translated_only"
+                    logger.info(f"Using subtitle_mode from dual_subtitles option: {subtitle_mode}")
+
+                if subtitle_mode == "dual" and task.translated_subtitle_path and task.translated_subtitle_path.exists():
                     # Dual subtitles mode - use preset or global defaults
                     if preset_data:
                         # Use preset styles
@@ -2412,20 +2421,32 @@ class VideoPipeline:
                         video_width=video_dimensions.width if video_dimensions else 0,
                         video_height=video_dimensions.height if video_dimensions else 0
                     )
-                elif task.translated_subtitle_path and task.translated_subtitle_path.exists():
+                elif subtitle_mode == "translated_only" and task.translated_subtitle_path and task.translated_subtitle_path.exists():
                     # Single subtitle (translated only)
-                    await self.subtitle_burner.burn_subtitles(
-                        task.video_path,
-                        task.translated_subtitle_path,
-                        task.final_video_path
-                    )
-                elif task.subtitle_path and task.subtitle_path.exists():
-                    # Single subtitle (original only) - subtitles-only mode or fallback
-                    # Use preset style if available (preset_data already loaded above)
+                    single_style = None
+                    if preset_data:
+                        single_style = SubtitleStyle.from_settings(preset_data.get('translated_style', {}))
+                        logger.info(f"Using preset translated_style for single subtitle: {preset_data.get('name')}")
+                    
+                    if single_style:
+                        await self.subtitle_burner.burn_subtitles(
+                            task.video_path,
+                            task.translated_subtitle_path,
+                            task.final_video_path,
+                            style=single_style
+                        )
+                    else:
+                        await self.subtitle_burner.burn_subtitles(
+                            task.video_path,
+                            task.translated_subtitle_path,
+                            task.final_video_path
+                        )
+                elif subtitle_mode == "original_only" and task.subtitle_path and task.subtitle_path.exists():
+                    # Single subtitle (original only)
                     single_style = None
                     if preset_data:
                         single_style = SubtitleStyle.from_settings(preset_data.get('original_style', {}))
-                        logger.info(f"Using preset style for single subtitle: {preset_data.get('name')}")
+                        logger.info(f"Using preset original_style for single subtitle: {preset_data.get('name')}")
 
                     if single_style:
                         await self.subtitle_burner.burn_subtitles(
@@ -2440,6 +2461,20 @@ class VideoPipeline:
                             task.subtitle_path,
                             task.final_video_path
                         )
+                elif task.translated_subtitle_path and task.translated_subtitle_path.exists():
+                    # Fallback: translated subtitle available
+                    await self.subtitle_burner.burn_subtitles(
+                        task.video_path,
+                        task.translated_subtitle_path,
+                        task.final_video_path
+                    )
+                elif task.subtitle_path and task.subtitle_path.exists():
+                    # Fallback: original subtitle available
+                    await self.subtitle_burner.burn_subtitles(
+                        task.video_path,
+                        task.subtitle_path,
+                        task.final_video_path
+                    )
                 else:
                     # No subtitles available, just copy
                     shutil.copy(task.video_path, task.final_video_path)
