@@ -58,31 +58,57 @@ async def scrape_tiktok_tag(tag: str, max_videos: int = 20, timeout: int = 30000
             
             await page.goto(url, wait_until='networkidle', timeout=timeout)
             
-            # Wait for video elements to load
-            await page.wait_for_selector('[data-e2e="challenge-item"]', timeout=timeout)
+            # Wait for page to load
+            try:
+                await page.wait_for_selector('[data-e2e="challenge-item"]', timeout=timeout)
+            except:
+                logger.debug("Challenge item selector not found, continuing...")
+            
+            # Wait a bit for JS to populate data
+            await asyncio.sleep(2)
             
             # Scroll to load more videos
             for _ in range(3):
                 await page.evaluate('window.scrollBy(0, window.innerHeight)')
                 await asyncio.sleep(1)
             
-            # Extract video data from the page
-            video_elements = await page.query_selector_all('[data-e2e="challenge-item"]')
-            logger.info(f"Found {len(video_elements)} video elements")
+            # Try JSON extraction FIRST (more reliable for stats)
+            logger.info("Trying to extract from page JSON...")
+            videos = await extract_from_page_json(page)
             
-            for elem in video_elements[:max_videos]:
-                try:
-                    video_data = await extract_video_data(elem)
-                    if video_data:
-                        videos.append(video_data)
-                except Exception as e:
-                    logger.warning(f"Failed to extract video data: {e}")
-                    continue
-            
-            # Alternative: Try to extract from page's JSON data
-            if len(videos) == 0:
-                logger.info("Trying to extract from page JSON...")
-                videos = await extract_from_page_json(page)
+            # If JSON extraction got videos with stats, use those
+            if videos and any(v.get('view_count', 0) > 0 for v in videos):
+                logger.info(f"Got {len(videos)} videos from JSON with stats")
+            else:
+                # Fallback to DOM extraction
+                logger.info("JSON extraction incomplete, trying DOM extraction...")
+                video_elements = await page.query_selector_all('[data-e2e="challenge-item"]')
+                logger.info(f"Found {len(video_elements)} video elements")
+                
+                dom_videos = []
+                for elem in video_elements[:max_videos]:
+                    try:
+                        video_data = await extract_video_data(elem)
+                        if video_data:
+                            dom_videos.append(video_data)
+                    except Exception as e:
+                        logger.warning(f"Failed to extract video data: {e}")
+                        continue
+                
+                # Merge: prefer JSON data but add DOM videos if they have more info
+                if dom_videos:
+                    if not videos:
+                        videos = dom_videos
+                    else:
+                        # Merge by video_id, preferring data with stats
+                        video_map = {v['video_id']: v for v in videos}
+                        for dv in dom_videos:
+                            vid = dv['video_id']
+                            if vid not in video_map:
+                                video_map[vid] = dv
+                            elif dv.get('view_count', 0) > video_map[vid].get('view_count', 0):
+                                video_map[vid].update(dv)
+                        videos = list(video_map.values())
             
         except Exception as e:
             logger.error(f"Scraping failed: {e}")
@@ -205,14 +231,41 @@ async def extract_from_page_json(page: "Page") -> List[Dict[str, Any]]:
     videos = []
     
     try:
-        # Get page content
+        # Method 1: Use JavaScript to access window.__NEXT_DATA__ or similar
+        json_data = await page.evaluate('''() => {
+            // Try different global data sources
+            if (window.__NEXT_DATA__) return window.__NEXT_DATA__;
+            if (window.SIGI_STATE) return window.SIGI_STATE;
+            if (window.__UNIVERSAL_DATA_FOR_REHYDRATION__) return window.__UNIVERSAL_DATA_FOR_REHYDRATION__;
+            
+            // Try to find script tags with JSON data
+            const scripts = document.querySelectorAll('script[type="application/json"]');
+            for (const script of scripts) {
+                try {
+                    const data = JSON.parse(script.textContent);
+                    if (data && (data.ItemModule || data.props || data.__DEFAULT_SCOPE__)) {
+                        return data;
+                    }
+                } catch (e) {}
+            }
+            return null;
+        }''')
+        
+        if json_data:
+            logger.debug(f"Found JSON data with keys: {list(json_data.keys())[:5] if isinstance(json_data, dict) else 'not dict'}")
+            items = find_items_in_data(json_data)
+            if items:
+                videos.extend(items)
+                logger.info(f"Extracted {len(items)} videos from page JSON")
+                return videos
+        
+        # Method 2: Parse from page content (fallback)
         content = await page.content()
         
-        # Look for SIGI_STATE or similar
         patterns = [
-            r'<script id="SIGI_STATE" type="application/json">(.+?)</script>',
-            r'<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__" type="application/json">(.+?)</script>',
-            r'"ItemModule":\s*(\{.+?\})\s*,\s*"UserModule"',
+            r'<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>(.+?)</script>',
+            r'<script id="SIGI_STATE"[^>]*>(.+?)</script>',
+            r'<script id="__NEXT_DATA__"[^>]*>(.+?)</script>',
         ]
         
         for pattern in patterns:
@@ -220,12 +273,14 @@ async def extract_from_page_json(page: "Page") -> List[Dict[str, Any]]:
             if match:
                 try:
                     data = json.loads(match.group(1))
-                    # Try to find video items
+                    logger.debug(f"Found JSON via regex, keys: {list(data.keys())[:5] if isinstance(data, dict) else 'not dict'}")
                     items = find_items_in_data(data)
                     if items:
                         videos.extend(items)
+                        logger.info(f"Extracted {len(items)} videos from page JSON (regex)")
                         break
-                except json.JSONDecodeError:
+                except json.JSONDecodeError as e:
+                    logger.debug(f"JSON decode error: {e}")
                     continue
     except Exception as e:
         logger.debug(f"JSON extraction failed: {e}")
@@ -235,37 +290,113 @@ async def extract_from_page_json(page: "Page") -> List[Dict[str, Any]]:
 
 def find_items_in_data(data: Any, depth: int = 0) -> List[Dict[str, Any]]:
     """Recursively search for video items in nested data"""
-    if depth > 10:
+    if depth > 15:
         return []
     
     results = []
     
     if isinstance(data, dict):
+        # Check for ItemModule (common in TikTok's data structure)
+        if 'ItemModule' in data and isinstance(data['ItemModule'], dict):
+            for video_id, item_data in data['ItemModule'].items():
+                video = extract_video_from_item(item_data, video_id)
+                if video:
+                    results.append(video)
+            return results  # Return early if we found ItemModule
+        
+        # Check for __DEFAULT_SCOPE__ structure
+        if '__DEFAULT_SCOPE__' in data:
+            scope = data['__DEFAULT_SCOPE__']
+            if isinstance(scope, dict):
+                # Look for webapp.video-detail or similar
+                for key, value in scope.items():
+                    if 'item' in key.lower() or 'video' in key.lower():
+                        results.extend(find_items_in_data(value, depth + 1))
+        
         # Check if this looks like a video item
-        if 'id' in data and ('video' in data or 'desc' in data):
-            video = {
-                'video_id': str(data.get('id', '')),
-                'title': data.get('desc', '')[:100],
-                'channel_name': data.get('author', {}).get('uniqueId', 'Unknown') if isinstance(data.get('author'), dict) else 'Unknown',
-                'thumbnail_url': data.get('video', {}).get('cover', '') if isinstance(data.get('video'), dict) else '',
-                'video_url': f"https://www.tiktok.com/@{data.get('author', {}).get('uniqueId', 'user')}/video/{data.get('id', '')}",
-                'view_count': data.get('stats', {}).get('playCount', 0) if isinstance(data.get('stats'), dict) else 0,
-                'like_count': data.get('stats', {}).get('diggCount', 0) if isinstance(data.get('stats'), dict) else 0,
-                'duration': data.get('video', {}).get('duration', 0) if isinstance(data.get('video'), dict) else 0,
-                'platform': 'tiktok',
-            }
-            if video['video_id']:
+        if 'id' in data and ('video' in data or 'desc' in data or 'stats' in data):
+            video = extract_video_from_item(data)
+            if video:
                 results.append(video)
         
-        # Recurse into dict values
+        # Check for itemList or similar arrays
+        for key in ['itemList', 'items', 'videoList', 'videos', 'aweme_list']:
+            if key in data and isinstance(data[key], list):
+                for item in data[key]:
+                    video = extract_video_from_item(item)
+                    if video:
+                        results.append(video)
+        
+        # Recurse into dict values (but skip already processed keys)
+        skip_keys = {'ItemModule', '__DEFAULT_SCOPE__', 'itemList', 'items', 'videoList', 'videos', 'aweme_list'}
         for key, value in data.items():
-            results.extend(find_items_in_data(value, depth + 1))
+            if key not in skip_keys:
+                results.extend(find_items_in_data(value, depth + 1))
     
     elif isinstance(data, list):
         for item in data:
             results.extend(find_items_in_data(item, depth + 1))
     
-    return results
+    # Remove duplicates by video_id
+    seen = set()
+    unique_results = []
+    for video in results:
+        vid = video.get('video_id')
+        if vid and vid not in seen:
+            seen.add(vid)
+            unique_results.append(video)
+    
+    return unique_results
+
+
+def extract_video_from_item(data: Dict, video_id: str = None) -> Optional[Dict[str, Any]]:
+    """Extract video info from a TikTok item data structure"""
+    if not isinstance(data, dict):
+        return None
+    
+    vid = video_id or str(data.get('id', ''))
+    if not vid:
+        return None
+    
+    # Get author info
+    author = data.get('author', {})
+    if isinstance(author, dict):
+        author_name = author.get('uniqueId') or author.get('nickname') or author.get('unique_id') or 'Unknown'
+    else:
+        author_name = 'Unknown'
+    
+    # Get stats
+    stats = data.get('stats', {}) or data.get('statistics', {})
+    if isinstance(stats, dict):
+        view_count = stats.get('playCount') or stats.get('play_count') or stats.get('viewCount') or 0
+        like_count = stats.get('diggCount') or stats.get('digg_count') or stats.get('likeCount') or 0
+    else:
+        view_count = 0
+        like_count = 0
+    
+    # Get video info
+    video_info = data.get('video', {})
+    if isinstance(video_info, dict):
+        duration = video_info.get('duration', 0)
+        thumbnail = video_info.get('cover') or video_info.get('dynamicCover') or video_info.get('originCover') or ''
+    else:
+        duration = data.get('duration', 0)
+        thumbnail = ''
+    
+    # Get description/title
+    desc = data.get('desc', '') or data.get('title', '') or data.get('description', '')
+    
+    return {
+        'video_id': vid,
+        'title': desc[:100] if desc else f'TikTok Video {vid}',
+        'channel_name': str(author_name).replace('@', ''),
+        'thumbnail_url': thumbnail,
+        'video_url': f"https://www.tiktok.com/@{author_name}/video/{vid}",
+        'view_count': int(view_count) if view_count else 0,
+        'like_count': int(like_count) if like_count else 0,
+        'duration': int(duration) if duration else 0,
+        'platform': 'tiktok',
+    }
 
 
 def parse_count(text: str) -> int:
