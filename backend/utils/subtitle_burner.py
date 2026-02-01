@@ -373,11 +373,10 @@ class SubtitleBurner:
                 return time_str
 
             # Calculate horizontal margin based on max_width
-            # Use actual video width for calculation (matches frontend behavior)
-            play_res_x = video_width if video_width > 0 else 384
+            DEFAULT_PLAY_RES_X = 384
             max_width_pct = getattr(style, 'max_width', 90)
             if max_width_pct < 100:
-                margin_h = int(play_res_x * (100 - max_width_pct) / 2 / 100)
+                margin_h = int(DEFAULT_PLAY_RES_X * (100 - max_width_pct) / 2 / 100)
                 margin_h = max(margin_h, style.margin_h)
             else:
                 margin_h = style.margin_h
@@ -395,38 +394,16 @@ class SubtitleBurner:
                 actual_shadow = style.shadow
 
             # Build ASS header
-            # Set PlayResX/PlayResY to actual video dimensions so margins are in real pixels
-            # This matches frontend preview behavior where margin_v is used directly
-            play_res_x = video_width if video_width > 0 else 384
-            play_res_y = video_height if video_height > 0 else 288
-            
-            # Scale factor to match frontend behavior:
-            # Frontend scales font_size by (containerHeight / 288)
-            # We scale by (video_height / 288) to get the same proportional size
-            scale_factor = play_res_y / 288.0
-            scaled_font_size = int(style.font_size * scale_factor)
-            scaled_outline = max(1, int(box_outline * scale_factor)) if box_outline > 0 else 0
-            scaled_shadow = max(1, int(actual_shadow * scale_factor)) if actual_shadow > 0 else 0
-            scaled_spacing = int(style.spacing * scale_factor)
-            
-            # margin_v is NOT scaled - frontend uses raw value in single subtitle mode
-            # margin_h is already calculated based on max_width percentage of actual video width
-            
-            logger.info(f"[ASS] PlayRes={play_res_x}x{play_res_y}, scale={scale_factor:.2f}, "
-                       f"font_size={style.font_size}->{scaled_font_size}, margin_v={style.margin_v} (raw)")
-            
             ass_content = f"""[Script Info]
 Title: Styled Subtitle
 ScriptType: v4.00+
 WrapStyle: 0
 Collisions: Normal
 PlayDepth: 0
-PlayResX: {play_res_x}
-PlayResY: {play_res_y}
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,{style.font_name},{scaled_font_size},{style.primary_color},&H000000FF,{actual_outline_color},{style.back_color},{-1 if style.bold else 0},{-1 if style.italic else 0},0,0,{style.scale_x},{style.scale_y},{scaled_spacing},0,{border_style},{scaled_outline},{scaled_shadow},{style.alignment},{margin_h},{margin_h},{style.margin_v},1
+Style: Default,{style.font_name},{style.font_size},{style.primary_color},&H000000FF,{actual_outline_color},{style.back_color},{-1 if style.bold else 0},{-1 if style.italic else 0},0,0,{style.scale_x},{style.scale_y},{style.spacing},0,{border_style},{box_outline},{actual_shadow},{style.alignment},{margin_h},{margin_h},{style.margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
