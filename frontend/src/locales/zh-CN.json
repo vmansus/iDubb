@@ -434,6 +434,7 @@
     "steps": {
       "download": "下载视频",
       "transcribe": "语音识别",
+      "transcribeOcr": "OCR识别",
       "translate": "翻译字幕",
       "proofread": "字幕校对",
       "optimize": "字幕优化",

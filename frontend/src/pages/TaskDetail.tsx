@@ -800,7 +800,7 @@ export default function TaskDetail() {
                         <div className="flex items-center space-x-2">
                           <Icon className="h-4 w-4 text-gray-500" />
                           <span className={`font-medium ${willBeSkipped ? 'text-gray-500' : 'text-gray-900'}`}>
-                            {t(`taskDetail.steps.${stepName}`)}
+                            {t(`taskDetail.steps.${stepName === 'transcribe' && taskOptions?.options?.use_ocr ? 'transcribeOcr' : stepName}`)}
                           </span>
                           {willBeSkipped && (
                             <span className="px-1.5 py-0.5 text-xs bg-yellow-100 text-yellow-700 rounded">
@@ -956,6 +956,11 @@ export default function TaskDetail() {
                                     <span className="px-2 py-0.5 bg-yellow-100 text-yellow-700 rounded">
                                       {t('taskDetail.options.useExistingSub')}: {String(taskOptions.options.subtitle_language || 'auto')}
                                     </span>
+                                  ) : taskOptions.options.use_ocr ? (
+                                    <>
+                                      <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded">🔍 {String(taskOptions.options.ocr_engine || 'paddleocr')}</span>
+                                      <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded">{String(taskOptions.options.ocr_frame_interval || 0.5)}s</span>
+                                    </>
                                   ) : (
                                     <>
                                       <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded">{String(taskOptions.options.whisper_model || '')}</span>

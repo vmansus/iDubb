@@ -434,6 +434,7 @@
     "steps": {
       "download": "Download Video",
       "transcribe": "Speech Recognition",
+      "transcribeOcr": "OCR Recognition",
       "translate": "Translate Subtitles",
       "proofread": "Proofread Subtitles",
       "optimize": "Optimize Subtitles",

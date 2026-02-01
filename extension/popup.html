@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>iDubb 设置</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      width: 320px;
+      padding: 16px;
+      background: #f8f9fa;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #eee;
+    }
+
+    .header img {
+      width: 32px;
+      height: 32px;
+    }
+
+    .header h1 {
+      font-size: 18px;
+      color: #333;
+    }
+
+    .section {
+      background: white;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    .section-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: #666;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .form-group {
+      margin-bottom: 12px;
+    }
+
+    .form-group:last-child {
+      margin-bottom: 0;
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      color: #333;
+      margin-bottom: 4px;
+    }
+
+    input[type="text"],
+    select {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 13px;
+      transition: border-color 0.2s;
+    }
+
+    input[type="text"]:focus,
+    select:focus {
+      outline: none;
+      border-color: #ff6b6b;
+    }
+
+    .checkbox-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 0;
+    }
+
+    .checkbox-group input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      accent-color: #ff6b6b;
+    }
+
+    .checkbox-group label {
+      margin: 0;
+      cursor: pointer;
+    }
+
+    .btn {
+      width: 100%;
+      padding: 10px;
+      background: linear-gradient(135deg, #ff6b6b, #ee5a24);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+
+    .btn:hover {
+      opacity: 0.9;
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-secondary {
+      background: #6c757d;
+    }
+
+    .status {
+      font-size: 12px;
+      color: #666;
+      text-align: center;
+      margin-top: 8px;
+    }
+
+    .status.success {
+      color: #28a745;
+    }
+
+    .status.error {
+      color: #dc3545;
+    }
+
+    .pending-video {
+      background: #fff3cd;
+      border: 1px solid #ffc107;
+      border-radius: 6px;
+      padding: 10px;
+      margin-bottom: 12px;
+      font-size: 13px;
+    }
+
+    .pending-video strong {
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .pending-video .url {
+      word-break: break-all;
+      color: #666;
+      font-size: 12px;
+    }
+
+    .action-buttons {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .action-buttons .btn {
+      flex: 1;
+      padding: 8px;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <img src="icons/icon48.png" alt="iDubb">
+    <h1>iDubb</h1>
+  </div>
+
+  <!-- Pending video section (shown when right-click -> custom) -->
+  <div id="pendingVideoSection" class="pending-video" style="display: none;">
+    <strong>待处理视频：</strong>
+    <div class="url" id="pendingVideoUrl"></div>
+    <div class="action-buttons">
+      <button class="btn" id="publishBtn">🚀 发布</button>
+      <button class="btn btn-secondary" id="cancelBtn">取消</button>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">服务器设置</div>
+    <div class="form-group">
+      <label for="apiUrl">API 地址</label>
+      <input type="text" id="apiUrl" placeholder="http://localhost:8000">
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">发布目标</div>
+    <div class="checkbox-group">
+      <input type="checkbox" id="uploadDouyin">
+      <label for="uploadDouyin">📱 抖音</label>
+    </div>
+    <div class="checkbox-group">
+      <input type="checkbox" id="uploadXiaohongshu">
+      <label for="uploadXiaohongshu">📕 小红书</label>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">翻译设置</div>
+    <div class="form-group">
+      <label for="targetLanguage">目标语言</label>
+      <select id="targetLanguage">
+        <option value="zh-CN">简体中文</option>
+        <option value="zh-TW">繁体中文</option>
+        <option value="en">English</option>
+        <option value="ja">日本語</option>
+        <option value="ko">한국어</option>
+      </select>
+    </div>
+    <div class="checkbox-group">
+      <input type="checkbox" id="addSubtitles" checked>
+      <label for="addSubtitles">添加字幕</label>
+    </div>
+    <div class="checkbox-group">
+      <input type="checkbox" id="addTts" checked>
+      <label for="addTts">添加配音</label>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">配音设置</div>
+    <div class="form-group">
+      <label for="ttsVoice">配音声音</label>
+      <select id="ttsVoice">
+        <option value="zh-CN-XiaoxiaoNeural">晓晓（女声）</option>
+        <option value="zh-CN-YunxiNeural">云希（男声）</option>
+        <option value="zh-CN-YunjianNeural">云健（男声）</option>
+        <option value="zh-CN-XiaoyiNeural">晓伊（女声）</option>
+      </select>
+    </div>
+  </div>
+
+  <button class="btn" id="saveBtn">💾 保存设置</button>
+  <div class="status" id="status"></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
