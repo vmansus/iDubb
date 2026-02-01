@@ -242,7 +242,7 @@ class VideoOCR:
         """OCR using PaddleOCR (free, local)"""
         def _do_ocr():
             ocr = self._get_paddle_ocr()
-            result = ocr.ocr(str(frame_path), cls=True)
+            result = ocr.ocr(str(frame_path))
             
             if not result:
                 logger.debug(f"PaddleOCR returned None for {frame_path}")
