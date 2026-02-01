@@ -37,6 +37,24 @@
     .header h1 {
       font-size: 18px;
       color: #333;
+      flex: 1;
+    }
+
+    .connection-status {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      white-space: nowrap;
+    }
+
+    .connection-status.connected {
+      background: #d4edda;
+      color: #155724;
+    }
+
+    .connection-status.disconnected {
+      background: #f8d7da;
+      color: #721c24;
     }
 
     .section {
@@ -216,6 +234,7 @@
   <div class="header">
     <img src="icons/icon48.png" alt="iDubb">
     <h1>iDubb</h1>
+    <span class="connection-status disconnected" id="connectionStatus">连接中...</span>
   </div>
 
   <!-- Pending video section (shown when right-click -> custom) -->
