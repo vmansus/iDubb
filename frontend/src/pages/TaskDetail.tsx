@@ -1116,15 +1116,23 @@ export default function TaskDetail() {
                             )}
 
                             {/* Process video step - subtitle preset */}
-                            {stepName === 'process_video' && (
-                              (step?.status !== 'running') ? (
+                            {stepName === 'process_video' && (() => {
+                              const currentPresetId = String(editedOptions.subtitle_preset ?? taskOptions.options.subtitle_preset ?? presetsData?.presets?.[0]?.id ?? '')
+                              const currentPreset = presetsData?.presets?.find(p => p.id === currentPresetId)
+                              const subtitleMode = currentPreset?.subtitle_mode ?? 'dual'
+                              const modeLabel = subtitleMode === 'dual' ? t('taskDetail.options.dualSubtitles') 
+                                : subtitleMode === 'translated_only' ? t('taskDetail.options.translatedOnly', '仅译文')
+                                : t('taskDetail.options.originalOnly', '仅原文')
+                              const modeColor = subtitleMode === 'dual' ? 'bg-blue-100 text-blue-600' 
+                                : subtitleMode === 'translated_only' ? 'bg-green-100 text-green-600'
+                                : 'bg-gray-100 text-gray-600'
+                              
+                              return (step?.status !== 'running') ? (
                                 <>
-                                  {taskOptions.options.dual_subtitles && (
-                                    <span className="px-2 py-0.5 bg-blue-100 text-blue-600 rounded">{t('taskDetail.options.dualSubtitles')}</span>
-                                  )}
+                                  <span className={`px-2 py-0.5 rounded ${modeColor}`}>{modeLabel}</span>
                                   {presetsData?.presets && (
                                     <select
-                                      value={String(editedOptions.subtitle_preset ?? taskOptions.options.subtitle_preset ?? presetsData.presets[0]?.id ?? '')}
+                                      value={currentPresetId}
                                       onChange={(e) => {
                                         const newOpts = { ...editedOptions, subtitle_preset: e.target.value }
                                         setEditedOptions(newOpts)
@@ -1141,17 +1149,15 @@ export default function TaskDetail() {
                                 </>
                               ) : (
                                 <>
-                                  {taskOptions.options.dual_subtitles && (
-                                    <span className="px-2 py-0.5 bg-blue-100 text-blue-600 rounded">{t('taskDetail.options.dualSubtitles')}</span>
-                                  )}
-                                  {taskOptions.options.subtitle_preset && (
+                                  <span className={`px-2 py-0.5 rounded ${modeColor}`}>{modeLabel}</span>
+                                  {currentPresetId && (
                                     <span className="px-2 py-0.5 bg-purple-100 text-purple-600 rounded">
-                                      {presetsData?.presets?.find(p => p.id === taskOptions.options.subtitle_preset)?.name || String(taskOptions.options.subtitle_preset)}
+                                      {currentPreset?.name || currentPresetId}
                                     </span>
                                   )}
                                 </>
                               )
-                            )}
+                            })()}
 
                             {/* Upload step - platform checkboxes (only enabled after metadata approval) */}
                             {stepName === 'upload' && (
