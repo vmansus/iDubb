@@ -378,8 +378,12 @@ function injectIntoTikTokMenu() {
 
 // Add iDubb option to TikTok's menu
 function addIdubbOptionToMenu(menuContainer) {
-  // 避免重复添加
-  if (menuContainer.querySelector('.idubb-tiktok-option')) return;
+  // 避免重复添加 - 检查整个页面
+  if (document.querySelector('.idubb-tiktok-option')) {
+    // 已存在则移除旧的再添加新的
+    document.querySelectorAll('.idubb-tiktok-option').forEach(el => el.remove());
+    document.querySelectorAll('.idubb-tiktok-divider').forEach(el => el.remove());
+  }
   
   // 找到菜单项列表
   const menuItems = menuContainer.querySelectorAll('button, [role="button"], [class*="MenuItem"], [class*="Item"]');
@@ -389,20 +393,32 @@ function addIdubbOptionToMenu(menuContainer) {
   const lastItem = menuItems[menuItems.length - 1];
   if (!lastItem) return;
   
-  // 创建分割线（不再需要，容器自带背景）
-  const divider = document.createElement('div');
-  divider.style.cssText = 'height: 8px;'; // 只做间距
+  // 不再需要分割线
+  const divider = null;
   
-  // 创建我们的菜单项容器
+  // 获取 TikTok 菜单的位置，把 iDubb 菜单放在旁边
+  const menuRect = menuContainer.getBoundingClientRect();
+  
+  // 创建我们的菜单项容器 - 独立定位在旁边
   const idubbContainer = document.createElement('div');
   idubbContainer.className = 'idubb-tiktok-option';
   idubbContainer.style.cssText = `
+    position: fixed;
+    top: ${Math.max(10, menuRect.top)}px;
+    left: ${menuRect.right + 10}px;
     background: rgba(22, 24, 35, 0.98);
     border-radius: 8px;
-    margin: 8px 0;
     padding: 8px 0;
     box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    z-index: 10001;
+    min-width: 180px;
   `;
+  
+  // 如果右边放不下，放左边
+  if (menuRect.right + 200 > window.innerWidth) {
+    idubbContainer.style.left = 'auto';
+    idubbContainer.style.right = `${window.innerWidth - menuRect.left + 10}px`;
+  }
   idubbContainer.innerHTML = `
     <div class="idubb-menu-header" style="padding: 8px 16px; color: #fe2c55; font-weight: bold; font-size: 12px;">
       🚀 iDubb 一键发布
@@ -551,12 +567,29 @@ function addIdubbOptionToMenu(menuContainer) {
     });
   });
   
-  // 插入到菜单末尾
-  const parent = lastItem.parentElement || menuContainer;
-  parent.appendChild(divider);
-  parent.appendChild(idubbContainer);
+  // 插入到 body（独立定位）
+  document.body.appendChild(idubbContainer);
   
-  console.log('[iDubb] 已注入到 TikTok 菜单');
+  // 监听 TikTok 菜单关闭，同时关闭我们的菜单
+  const closeObserver = new MutationObserver((mutations) => {
+    // 检查 TikTok 菜单是否还在
+    if (!document.body.contains(menuContainer)) {
+      idubbContainer.remove();
+      closeObserver.disconnect();
+    }
+  });
+  closeObserver.observe(document.body, { childList: true, subtree: true });
+  
+  // 点击其他地方关闭
+  const clickHandler = (e) => {
+    if (!idubbContainer.contains(e.target) && !menuContainer.contains(e.target)) {
+      idubbContainer.remove();
+      document.removeEventListener('click', clickHandler);
+    }
+  };
+  setTimeout(() => document.addEventListener('click', clickHandler), 100);
+  
+  console.log('[iDubb] 已注入到 TikTok 菜单旁边');
 }
 
 // Initialize
