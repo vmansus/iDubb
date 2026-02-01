@@ -92,7 +92,7 @@ class VideoOCR:
                 self._paddle_ocr = PaddleOCR(
                     use_angle_cls=True,
                     lang='en',
-                    show_log=False,
+                    
                     use_gpu=False,
                 )
                 logger.info("PaddleOCR initialized successfully")
