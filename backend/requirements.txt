@@ -23,7 +23,7 @@ deep-translator>=1.11.4
 edge-tts>=6.1.9
 pyttsx3>=2.90
 gtts>=2.5.0
-qwen-tts>=1.0.0  # Qwen3-TTS: high-quality voice synthesis & cloning
+qwen-tts>=0.0.5  # Qwen3-TTS: high-quality voice synthesis & cloning
 soundfile>=0.12.0  # Required for Qwen3-TTS audio output
 
 # Web Framework

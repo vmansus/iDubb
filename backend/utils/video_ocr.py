@@ -3,6 +3,7 @@ Video OCR - Extract text from video frames using vision models or local OCR
 """
 import asyncio
 import base64
+import re
 from loguru import logger
 import logging
 import subprocess
