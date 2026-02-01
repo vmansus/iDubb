@@ -1554,7 +1554,7 @@ class VideoPipeline:
             translated_segments = self._transcription_cache.get(f"{task.task_id}_translated")
 
             if not transcription or not translated_segments:
-                # Try to restore from SRT files
+                # Try to restore from SRT files (returns dicts already)
                 original_segments = []
                 if task.subtitle_path and task.subtitle_path.exists():
                     original_segments = self._parse_srt_file(task.subtitle_path)
@@ -1566,6 +1566,7 @@ class VideoPipeline:
                 if not original_segments or not translated_segments:
                     await self._skip_step(task, step_name, "Could not load subtitle segments")
                     return True
+                # translated_segments are already dicts from _parse_srt_file
             else:
                 # Convert transcription segments to dict format
                 original_segments = [
