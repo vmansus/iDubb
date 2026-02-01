@@ -372,26 +372,32 @@ class SubtitleBurner:
                     time_str = time_str[1:]
                 return time_str
 
-            # Determine PlayRes based on video aspect ratio
-            # For vertical videos, use PlayRes that matches frontend preview container
-            # Frontend vertical preview: max-w-200px with 9:16 aspect = 355.5px height
-            # Frontend horizontal preview: typically ~288px height (close to ASS default)
-            # This ensures margin_v scaling matches frontend: actual = margin_v * (video_height / PlayResY)
+            # ASS default PlayRes (used for font scaling - must stay at 288 to match frontend)
+            PLAY_RES_X = 384
+            PLAY_RES_Y = 288
+            
+            # Frontend preview container height varies by aspect ratio:
+            # - Vertical (9:16): 200px wide * 16/9 = 355.5px tall
+            # - Horizontal (16:9): typically ~288px tall (matches ASS default)
+            # 
+            # Frontend uses margin_v directly (raw pixels) without scaling in single subtitle mode.
+            # ASS scales margin_v by (video_height / PlayResY).
+            # To match frontend position, we need to adjust margin_v:
+            #   adjusted_margin = margin_v * (PLAY_RES_Y / preview_container_height)
             is_vertical = video_height > video_width if video_width > 0 and video_height > 0 else False
             if is_vertical:
                 # Vertical video: preview container is 200px wide * 16/9 = 355.5px tall
-                play_res_y = 355.5
-                play_res_x = 200.0
-                logger.info(f"[ASS] Vertical video detected, using PlayRes {play_res_x}x{play_res_y} to match frontend preview")
+                preview_container_height = 200.0 * 16.0 / 9.0  # = 355.5
+                margin_v_adjusted = int(style.margin_v * PLAY_RES_Y / preview_container_height)
+                logger.info(f"[ASS] Vertical video: margin_v {style.margin_v} -> {margin_v_adjusted} (adjusted for preview height {preview_container_height:.1f})")
             else:
-                # Horizontal video: use ASS default (close to typical preview height)
-                play_res_y = 288
-                play_res_x = 384
+                # Horizontal video: preview container height ≈ 288 (matches ASS default)
+                margin_v_adjusted = style.margin_v
             
             # Calculate horizontal margin based on max_width
             max_width_pct = getattr(style, 'max_width', 90)
             if max_width_pct < 100:
-                margin_h = int(play_res_x * (100 - max_width_pct) / 2 / 100)
+                margin_h = int(PLAY_RES_X * (100 - max_width_pct) / 2 / 100)
                 margin_h = max(margin_h, style.margin_h)
             else:
                 margin_h = style.margin_h
@@ -408,19 +414,17 @@ class SubtitleBurner:
                 actual_outline_color = style.outline_color
                 actual_shadow = style.shadow
 
-            # Build ASS header (PlayRes already calculated above)
+            # Build ASS header (use default PlayRes 384x288 for correct font scaling)
             ass_content = f"""[Script Info]
 Title: Styled Subtitle
 ScriptType: v4.00+
 WrapStyle: 0
 Collisions: Normal
 PlayDepth: 0
-PlayResX: {int(play_res_x)}
-PlayResY: {int(play_res_y)}
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,{style.font_name},{style.font_size},{style.primary_color},&H000000FF,{actual_outline_color},{style.back_color},{-1 if style.bold else 0},{-1 if style.italic else 0},0,0,{style.scale_x},{style.scale_y},{style.spacing},0,{border_style},{box_outline},{actual_shadow},{style.alignment},{margin_h},{margin_h},{style.margin_v},1
+Style: Default,{style.font_name},{style.font_size},{style.primary_color},&H000000FF,{actual_outline_color},{style.back_color},{-1 if style.bold else 0},{-1 if style.italic else 0},0,0,{style.scale_x},{style.scale_y},{style.spacing},0,{border_style},{box_outline},{actual_shadow},{style.alignment},{margin_h},{margin_h},{margin_v_adjusted},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
