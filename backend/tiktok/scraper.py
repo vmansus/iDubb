@@ -296,22 +296,37 @@ def find_items_in_data(data: Any, depth: int = 0) -> List[Dict[str, Any]]:
     results = []
     
     if isinstance(data, dict):
+        # Log top-level keys for debugging
+        if depth == 0:
+            logger.debug(f"Top-level keys in data: {list(data.keys())[:10]}")
+        
         # Check for ItemModule (common in TikTok's data structure)
         if 'ItemModule' in data and isinstance(data['ItemModule'], dict):
+            logger.info(f"Found ItemModule with {len(data['ItemModule'])} items")
             for video_id, item_data in data['ItemModule'].items():
                 video = extract_video_from_item(item_data, video_id)
                 if video:
                     results.append(video)
-            return results  # Return early if we found ItemModule
+            if results:
+                return results  # Return early if we found good data
         
-        # Check for __DEFAULT_SCOPE__ structure
+        # Check for __DEFAULT_SCOPE__ structure (newer TikTok pages)
         if '__DEFAULT_SCOPE__' in data:
             scope = data['__DEFAULT_SCOPE__']
+            logger.debug(f"Found __DEFAULT_SCOPE__ with keys: {list(scope.keys())[:10] if isinstance(scope, dict) else 'not dict'}")
             if isinstance(scope, dict):
-                # Look for webapp.video-detail or similar
-                for key, value in scope.items():
-                    if 'item' in key.lower() or 'video' in key.lower():
-                        results.extend(find_items_in_data(value, depth + 1))
+                # Look for specific keys that contain video data
+                video_keys = [k for k in scope.keys() if any(x in k.lower() for x in ['item', 'video', 'feed', 'challenge'])]
+                for key in video_keys:
+                    logger.debug(f"Checking __DEFAULT_SCOPE__.{key}")
+                    results.extend(find_items_in_data(scope[key], depth + 1))
+        
+        # Check for props.pageProps structure (Next.js pattern)
+        if 'props' in data and isinstance(data['props'], dict):
+            page_props = data['props'].get('pageProps', {})
+            if page_props:
+                logger.debug(f"Found props.pageProps with keys: {list(page_props.keys())[:10]}")
+                results.extend(find_items_in_data(page_props, depth + 1))
         
         # Check if this looks like a video item
         if 'id' in data and ('video' in data or 'desc' in data or 'stats' in data):
@@ -320,15 +335,17 @@ def find_items_in_data(data: Any, depth: int = 0) -> List[Dict[str, Any]]:
                 results.append(video)
         
         # Check for itemList or similar arrays
-        for key in ['itemList', 'items', 'videoList', 'videos', 'aweme_list']:
+        array_keys = ['itemList', 'items', 'videoList', 'videos', 'aweme_list', 'ItemList', 'challengeItem', 'itemInfos']
+        for key in array_keys:
             if key in data and isinstance(data[key], list):
+                logger.debug(f"Found {key} with {len(data[key])} items")
                 for item in data[key]:
                     video = extract_video_from_item(item)
                     if video:
                         results.append(video)
         
         # Recurse into dict values (but skip already processed keys)
-        skip_keys = {'ItemModule', '__DEFAULT_SCOPE__', 'itemList', 'items', 'videoList', 'videos', 'aweme_list'}
+        skip_keys = {'ItemModule', '__DEFAULT_SCOPE__', 'props', 'itemList', 'items', 'videoList', 'videos', 'aweme_list', 'ItemList', 'challengeItem', 'itemInfos'}
         for key, value in data.items():
             if key not in skip_keys:
                 results.extend(find_items_in_data(value, depth + 1))
@@ -346,6 +363,9 @@ def find_items_in_data(data: Any, depth: int = 0) -> List[Dict[str, Any]]:
             seen.add(vid)
             unique_results.append(video)
     
+    # Sort by view_count (highest first) and then by create_time (newest first)
+    unique_results.sort(key=lambda x: (x.get('view_count', 0), x.get('create_time', 0)), reverse=True)
+    
     return unique_results
 
 
@@ -358,35 +378,72 @@ def extract_video_from_item(data: Dict, video_id: str = None) -> Optional[Dict[s
     if not vid:
         return None
     
-    # Get author info
+    # Get author info - try multiple paths
     author = data.get('author', {})
     if isinstance(author, dict):
         author_name = author.get('uniqueId') or author.get('nickname') or author.get('unique_id') or 'Unknown'
     else:
-        author_name = 'Unknown'
+        author_name = data.get('authorUniqueId', '') or data.get('author', 'Unknown')
     
-    # Get stats
-    stats = data.get('stats', {}) or data.get('statistics', {})
+    # Get stats - try multiple paths and field names
+    stats = data.get('stats', {}) or data.get('statistics', {}) or data.get('statsV2', {})
+    view_count = 0
+    like_count = 0
+    
     if isinstance(stats, dict):
-        view_count = stats.get('playCount') or stats.get('play_count') or stats.get('viewCount') or 0
-        like_count = stats.get('diggCount') or stats.get('digg_count') or stats.get('likeCount') or 0
-    else:
-        view_count = 0
-        like_count = 0
+        # Try all possible field names for play count
+        view_count = (
+            stats.get('playCount') or 
+            stats.get('play_count') or 
+            stats.get('viewCount') or 
+            stats.get('playCountStr') or  # Sometimes it's a string like "1.2M"
+            0
+        )
+        if isinstance(view_count, str):
+            view_count = parse_count(view_count)
+        
+        like_count = (
+            stats.get('diggCount') or 
+            stats.get('digg_count') or 
+            stats.get('likeCount') or 
+            stats.get('likes') or
+            0
+        )
+        if isinstance(like_count, str):
+            like_count = parse_count(like_count)
+    
+    # Also check top-level fields
+    if not view_count:
+        view_count = data.get('playCount') or data.get('play_count') or 0
+        if isinstance(view_count, str):
+            view_count = parse_count(view_count)
     
     # Get video info
     video_info = data.get('video', {})
+    duration = 0
+    thumbnail = ''
+    
     if isinstance(video_info, dict):
         duration = video_info.get('duration', 0)
-        thumbnail = video_info.get('cover') or video_info.get('dynamicCover') or video_info.get('originCover') or ''
-    else:
-        duration = data.get('duration', 0)
-        thumbnail = ''
+        thumbnail = (
+            video_info.get('cover') or 
+            video_info.get('dynamicCover') or 
+            video_info.get('originCover') or 
+            video_info.get('playAddr') or
+            ''
+        )
+    
+    # Fallback for duration
+    if not duration:
+        duration = data.get('duration', 0) or data.get('videoDuration', 0)
     
     # Get description/title
     desc = data.get('desc', '') or data.get('title', '') or data.get('description', '')
     
-    return {
+    # Get createTime for sorting by recency
+    create_time = data.get('createTime', 0) or data.get('create_time', 0)
+    
+    video_result = {
         'video_id': vid,
         'title': desc[:100] if desc else f'TikTok Video {vid}',
         'channel_name': str(author_name).replace('@', ''),
@@ -396,7 +453,13 @@ def extract_video_from_item(data: Dict, video_id: str = None) -> Optional[Dict[s
         'like_count': int(like_count) if like_count else 0,
         'duration': int(duration) if duration else 0,
         'platform': 'tiktok',
+        'create_time': int(create_time) if create_time else 0,
     }
+    
+    # Debug logging for first few videos
+    logger.debug(f"Extracted video {vid}: views={view_count}, dur={duration}, title={desc[:30] if desc else 'N/A'}")
+    
+    return video_result
 
 
 def parse_count(text: str) -> int:
