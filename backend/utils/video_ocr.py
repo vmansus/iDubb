@@ -49,6 +49,32 @@ class VideoOCR:
         self.frame_interval = frame_interval
         self.min_text_duration = min_text_duration
         self._paddle_ocr = None
+        
+        # Validate engine configuration early
+        self._validate_engine()
+    
+    def _validate_engine(self):
+        """Validate OCR engine is available before starting"""
+        logger.info(f"Initializing VideoOCR with engine: {self.engine}")
+        
+        if self.engine == "paddleocr":
+            try:
+                from paddleocr import PaddleOCR
+                logger.info("PaddleOCR module available")
+            except ImportError:
+                raise ImportError(
+                    "PaddleOCR not installed. Run: pip install paddlepaddle paddleocr"
+                )
+        elif self.engine == "openai":
+            if not self.api_key:
+                raise ValueError("OpenAI API key required for openai OCR engine")
+            logger.info(f"Using OpenAI OCR with model: {self.model}")
+        elif self.engine == "anthropic":
+            if not self.api_key:
+                raise ValueError("Anthropic API key required for anthropic OCR engine")
+            logger.info(f"Using Anthropic OCR with model: {self.model}")
+        else:
+            raise ValueError(f"Unknown OCR engine: {self.engine}")
     
     def _default_model(self) -> str:
         if self.engine == "openai":
@@ -62,12 +88,14 @@ class VideoOCR:
         if self._paddle_ocr is None:
             try:
                 from paddleocr import PaddleOCR
+                logger.info("Initializing PaddleOCR (this may take a moment on first run)...")
                 self._paddle_ocr = PaddleOCR(
                     use_angle_cls=True,
                     lang='en',
                     show_log=False,
                     use_gpu=False,
                 )
+                logger.info("PaddleOCR initialized successfully")
             except ImportError:
                 raise ImportError(
                     "PaddleOCR not installed. Run: pip install paddlepaddle paddleocr"
@@ -77,19 +105,35 @@ class VideoOCR:
     async def extract_text(self, video_path: Path) -> OCRResult:
         """Extract text from video frames"""
         try:
+            logger.info(f"Starting OCR extraction from video: {video_path}")
+            
             duration = await self._get_video_duration(video_path)
             if duration <= 0:
+                logger.error(f"Could not get video duration for: {video_path}")
                 return OCRResult(success=False, segments=[], error="Could not get video duration")
             
             logger.info(f"Video duration: {duration:.2f}s, extracting frames every {self.frame_interval}s")
             
             frames = await self._extract_frames(video_path, duration)
             if not frames:
+                logger.error("No frames were extracted from the video")
                 return OCRResult(success=False, segments=[], error="No frames extracted")
             
-            logger.info(f"Extracted {len(frames)} frames")
+            logger.info(f"Extracted {len(frames)} frames, starting OCR...")
             
             frame_texts = await self._ocr_frames(frames)
+            
+            # Log summary of OCR results
+            non_empty_count = sum(1 for _, text in frame_texts if text.strip())
+            logger.info(f"OCR completed: {non_empty_count}/{len(frame_texts)} frames had detected text")
+            
+            # Log first few detected texts for debugging
+            detected_samples = [(ts, text) for ts, text in frame_texts if text.strip()][:5]
+            if detected_samples:
+                logger.info(f"Sample detected texts: {detected_samples}")
+            else:
+                logger.warning("No text detected in any frame!")
+            
             segments = self._build_segments(frame_texts)
             
             # Cleanup
@@ -99,11 +143,15 @@ class VideoOCR:
                 except:
                     pass
             
-            logger.info(f"Detected {len(segments)} text segments")
+            logger.info(f"Built {len(segments)} text segments from OCR results")
+            if segments:
+                for seg in segments[:3]:
+                    logger.debug(f"Segment [{seg.start_time:.1f}s - {seg.end_time:.1f}s]: {seg.text[:50]}...")
+            
             return OCRResult(success=True, segments=segments)
             
         except Exception as e:
-            logger.error(f"Video OCR failed: {e}")
+            logger.error(f"Video OCR failed: {e}", exc_info=True)
             return OCRResult(success=False, segments=[], error=str(e))
     
     async def _get_video_duration(self, video_path: Path) -> float:
@@ -115,7 +163,11 @@ class VideoOCR:
             )
             if result.returncode == 0:
                 data = json.loads(result.stdout)
-                return float(data.get("format", {}).get("duration", 0))
+                duration = float(data.get("format", {}).get("duration", 0))
+                logger.debug(f"Video duration from ffprobe: {duration}s")
+                return duration
+            else:
+                logger.error(f"ffprobe failed: {result.stderr}")
         except Exception as e:
             logger.error(f"Failed to get video duration: {e}")
         return 0
@@ -124,12 +176,15 @@ class VideoOCR:
         """Extract frames at regular intervals"""
         frames = []
         temp_dir = Path(tempfile.mkdtemp(prefix="ocr_frames_"))
+        logger.debug(f"Extracting frames to temp dir: {temp_dir}")
         
         times = []
         t = 0.0
         while t < duration:
             times.append(t)
             t += self.frame_interval
+        
+        logger.info(f"Will extract {len(times)} frames at {self.frame_interval}s intervals")
         
         for i, timestamp in enumerate(times):
             frame_path = temp_dir / f"frame_{i:04d}.jpg"
@@ -140,7 +195,10 @@ class VideoOCR:
             )
             if result.returncode == 0 and frame_path.exists():
                 frames.append((frame_path, timestamp))
+            else:
+                logger.warning(f"Failed to extract frame at {timestamp}s: {result.stderr}")
         
+        logger.info(f"Successfully extracted {len(frames)}/{len(times)} frames")
         return frames
     
     async def _ocr_frames(self, frames: List[Tuple[Path, float]]) -> List[Tuple[float, str]]:
@@ -150,6 +208,7 @@ class VideoOCR:
         
         for i in range(0, len(frames), batch_size):
             batch = frames[i:i + batch_size]
+            logger.debug(f"Processing OCR batch {i//batch_size + 1}, frames {i+1}-{min(i+batch_size, len(frames))}")
             batch_results = await asyncio.gather(
                 *[self._ocr_single_frame(fp, ts) for fp, ts in batch]
             )
@@ -170,6 +229,10 @@ class VideoOCR:
                 text = await self._ocr_anthropic(frame_path)
             else:
                 text = ""
+            
+            if text.strip():
+                logger.debug(f"Frame at {timestamp:.1f}s: detected text '{text[:50]}...'" if len(text) > 50 else f"Frame at {timestamp:.1f}s: detected text '{text}'")
+            
             return (timestamp, text.strip())
         except Exception as e:
             logger.warning(f"OCR failed for frame at {timestamp}s: {e}")
@@ -180,12 +243,19 @@ class VideoOCR:
         def _do_ocr():
             ocr = self._get_paddle_ocr()
             result = ocr.ocr(str(frame_path), cls=True)
-            if not result or not result[0]:
+            
+            if not result:
+                logger.debug(f"PaddleOCR returned None for {frame_path}")
                 return ""
+            if not result[0]:
+                logger.debug(f"PaddleOCR returned empty result[0] for {frame_path}")
+                return ""
+            
             texts = []
             for line in result[0]:
                 if line and len(line) >= 2:
                     text, confidence = line[1]
+                    logger.debug(f"PaddleOCR detected: '{text}' (confidence: {confidence:.2f})")
                     if confidence > 0.5:
                         texts.append(text)
             return " ".join(texts)
@@ -218,7 +288,7 @@ class VideoOCR:
             )
             if response.status_code == 200:
                 return response.json()["choices"][0]["message"]["content"]
-            logger.error(f"OpenAI API error: {response.status_code}")
+            logger.error(f"OpenAI API error: {response.status_code} - {response.text}")
             return ""
     
     async def _ocr_anthropic(self, frame_path: Path) -> str:
@@ -246,12 +316,13 @@ class VideoOCR:
             )
             if response.status_code == 200:
                 return response.json()["content"][0]["text"]
-            logger.error(f"Anthropic API error: {response.status_code}")
+            logger.error(f"Anthropic API error: {response.status_code} - {response.text}")
             return ""
     
     def _build_segments(self, frame_texts: List[Tuple[float, str]]) -> List[OCRSegment]:
         """Build text segments from frame OCR results"""
         if not frame_texts:
+            logger.warning("No frame texts to build segments from")
             return []
         
         segments = []
@@ -270,6 +341,7 @@ class VideoOCR:
                     end_time = timestamp
                     if end_time - start_time >= self.min_text_duration:
                         segments.append(OCRSegment(text=current_text, start_time=start_time, end_time=end_time))
+                        logger.debug(f"Built segment: [{start_time:.1f}s - {end_time:.1f}s] '{current_text[:30]}...'")
                 
                 if normalized:
                     current_text = text
@@ -281,6 +353,7 @@ class VideoOCR:
             end_time = frame_texts[-1][0] + self.frame_interval
             if end_time - start_time >= self.min_text_duration:
                 segments.append(OCRSegment(text=current_text, start_time=start_time, end_time=end_time))
+                logger.debug(f"Built final segment: [{start_time:.1f}s - {end_time:.1f}s] '{current_text[:30]}...'")
         
         return segments
     
