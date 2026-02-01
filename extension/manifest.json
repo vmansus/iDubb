@@ -13,6 +13,8 @@
   "host_permissions": [
     "https://www.tiktok.com/*",
     "https://www.douyin.com/*",
+    "http://localhost:8888/*",
+    "http://127.0.0.1:8888/*",
     "http://localhost:8000/*",
     "http://127.0.0.1:8000/*"
   ],

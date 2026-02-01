@@ -5,7 +5,7 @@
 
 // Default settings
 const DEFAULT_SETTINGS = {
-  apiUrl: 'http://localhost:8000',
+  apiUrl: 'http://localhost:8888',
   uploadDouyin: true,
   uploadXiaohongshu: false,
   targetLanguage: 'zh-CN',
