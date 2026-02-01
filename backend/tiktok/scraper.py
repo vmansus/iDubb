@@ -240,9 +240,6 @@ def extract_video_from_api_item(item: Dict[str, Any]) -> Optional[Dict[str, Any]
         # Get stats
         stats = item.get('stats', {})
         view_count = stats.get('playCount', 0)
-        like_count = stats.get('diggCount', 0)
-        comment_count = stats.get('commentCount', 0)
-        share_count = stats.get('shareCount', 0)
         
         # Get video info
         video_info = item.get('video', {})
@@ -260,9 +257,6 @@ def extract_video_from_api_item(item: Dict[str, Any]) -> Optional[Dict[str, Any]
             'thumbnail_url': cover,
             'video_url': f'https://www.tiktok.com/@{author_id}/video/{video_id}',
             'view_count': view_count,
-            'like_count': like_count,
-            'comment_count': comment_count,
-            'share_count': share_count,
             'duration': duration,
             'platform': 'tiktok',
         }
