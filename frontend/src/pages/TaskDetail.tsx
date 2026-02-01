@@ -884,10 +884,10 @@ export default function TaskDetail() {
                                 taskOptions.options.use_ocr ? (
                                   /* OCR mode - show OCR engine and frame interval */
                                   <>
-                                    <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded text-xs">
+                                    <span className="px-2 py-0.5 bg-amber-500 text-white rounded text-xs font-medium">
                                       🔍 {String(taskOptions.options.ocr_engine || 'paddleocr')}
                                     </span>
-                                    <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">
+                                    <span className="px-2 py-0.5 bg-slate-600 text-white rounded text-xs">
                                       {String(taskOptions.options.ocr_frame_interval || 0.5)}s 间隔
                                     </span>
                                   </>
@@ -970,7 +970,7 @@ export default function TaskDetail() {
                                     </span>
                                   ) : taskOptions.options.use_ocr ? (
                                     <>
-                                      <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded">🔍 {String(taskOptions.options.ocr_engine || 'paddleocr')}</span>
+                                      <span className="px-2 py-0.5 bg-amber-500 text-white rounded font-medium">🔍 {String(taskOptions.options.ocr_engine || 'paddleocr')}</span>
                                       <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded">{String(taskOptions.options.ocr_frame_interval || 0.5)}s</span>
                                     </>
                                   ) : (
