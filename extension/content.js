@@ -389,13 +389,20 @@ function addIdubbOptionToMenu(menuContainer) {
   const lastItem = menuItems[menuItems.length - 1];
   if (!lastItem) return;
   
-  // 创建分割线
+  // 创建分割线（不再需要，容器自带背景）
   const divider = document.createElement('div');
-  divider.style.cssText = 'height: 1px; background: rgba(255,255,255,0.1); margin: 8px 0;';
+  divider.style.cssText = 'height: 8px;'; // 只做间距
   
   // 创建我们的菜单项容器
   const idubbContainer = document.createElement('div');
   idubbContainer.className = 'idubb-tiktok-option';
+  idubbContainer.style.cssText = `
+    background: rgba(22, 24, 35, 0.98);
+    border-radius: 8px;
+    margin: 8px 0;
+    padding: 8px 0;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  `;
   idubbContainer.innerHTML = `
     <div class="idubb-menu-header" style="padding: 8px 16px; color: #fe2c55; font-weight: bold; font-size: 12px;">
       🚀 iDubb 一键发布
