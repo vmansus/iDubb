@@ -3,6 +3,92 @@
  * Runs on TikTok pages to detect videos and enable quick actions
  */
 
+// Inject styles for iDubb menu
+const idubbStyles = document.createElement('style');
+idubbStyles.textContent = `
+  .idubb-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    background: rgba(22, 24, 35, 0.95);
+    border-radius: 8px;
+    padding: 8px 0;
+    min-width: 160px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    backdrop-filter: blur(10px);
+    z-index: 1000;
+  }
+  .idubb-menu-section {
+    padding: 4px 12px;
+    color: #888;
+    font-size: 11px;
+    text-transform: uppercase;
+  }
+  .idubb-menu-divider {
+    height: 1px;
+    background: rgba(255,255,255,0.1);
+    margin: 6px 0;
+  }
+  .idubb-menu-item {
+    padding: 10px 12px;
+    color: white;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .idubb-menu-item:hover {
+    background: rgba(255,255,255,0.1);
+  }
+  .idubb-menu-item.selected {
+    background: rgba(254, 44, 85, 0.2);
+    color: #fe2c55;
+  }
+  .idubb-menu-item.selected::after {
+    content: '✓';
+    margin-left: auto;
+    font-size: 12px;
+  }
+  .idubb-menu-submit {
+    background: #fe2c55 !important;
+    margin: 8px;
+    border-radius: 4px;
+    justify-content: center;
+    font-weight: bold;
+  }
+  .idubb-menu-submit:hover {
+    background: #ff4466 !important;
+  }
+  .idubb-btn {
+    width: 36px;
+    height: 36px;
+    background: rgba(254, 44, 85, 0.9);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    cursor: pointer;
+    transition: transform 0.2s, background 0.2s;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  }
+  .idubb-btn:hover {
+    transform: scale(1.1);
+    background: #fe2c55;
+  }
+  @keyframes idubb-fadeIn {
+    from { opacity: 0; transform: translateX(-50%) translateY(10px); }
+    to { opacity: 1; transform: translateX(-50%) translateY(0); }
+  }
+  @keyframes idubb-fadeOut {
+    from { opacity: 1; }
+    to { opacity: 0; }
+  }
+`;
+document.head.appendChild(idubbStyles);
+
 // Track current video URL
 let currentVideoUrl = null;
 
@@ -68,9 +154,16 @@ function addQuickActionButton() {
         </svg>
       </div>
       <div class="idubb-menu" style="display: none;">
-        <div class="idubb-menu-item" data-action="douyin">📱 发布到抖音</div>
-        <div class="idubb-menu-item" data-action="xiaohongshu">📕 发布到小红书</div>
-        <div class="idubb-menu-item" data-action="both">🚀 全部平台</div>
+        <div class="idubb-menu-section">处理模式</div>
+        <div class="idubb-menu-item" data-mode="full_translation">🎙️ 完整翻译</div>
+        <div class="idubb-menu-item" data-mode="subtitles_only">📝 仅字幕</div>
+        <div class="idubb-menu-item" data-mode="direct_transfer">📦 直接搬运</div>
+        <div class="idubb-menu-item" data-mode="smart">🤖 智能判断</div>
+        <div class="idubb-menu-divider"></div>
+        <div class="idubb-menu-section">发布平台</div>
+        <div class="idubb-menu-item" data-action="douyin">📱 抖音</div>
+        <div class="idubb-menu-item" data-action="xiaohongshu">📕 小红书</div>
+        <div class="idubb-menu-item idubb-menu-submit" data-action="submit">🚀 开始处理</div>
       </div>
     `;
 
@@ -110,45 +203,107 @@ function addQuickActionButton() {
       menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
     });
 
+    // Track selected options
+    let selectedMode = 'smart'; // 默认智能判断
+    let selectedPlatforms = { douyin: true, xiaohongshu: false }; // 默认抖音
+
     // Handle menu item clicks
     button.querySelectorAll('.idubb-menu-item').forEach(menuItem => {
       menuItem.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
         
+        const mode = menuItem.dataset.mode;
         const action = menuItem.dataset.action;
-        const videoUrl = videoLink.href;
         
-        let uploadDouyin = false;
-        let uploadXiaohongshu = false;
+        // 处理模式选择
+        if (mode) {
+          selectedMode = mode;
+          // 更新 UI 显示选中状态
+          button.querySelectorAll('[data-mode]').forEach(el => el.classList.remove('selected'));
+          menuItem.classList.add('selected');
+          return; // 不关闭菜单
+        }
         
-        if (action === 'douyin' || action === 'both') {
-          uploadDouyin = true;
+        // 平台选择 (toggle)
+        if (action === 'douyin') {
+          selectedPlatforms.douyin = !selectedPlatforms.douyin;
+          menuItem.classList.toggle('selected', selectedPlatforms.douyin);
+          return;
         }
-        if (action === 'xiaohongshu' || action === 'both') {
-          uploadXiaohongshu = true;
+        if (action === 'xiaohongshu') {
+          selectedPlatforms.xiaohongshu = !selectedPlatforms.xiaohongshu;
+          menuItem.classList.toggle('selected', selectedPlatforms.xiaohongshu);
+          return;
         }
-
-        // Send to background script
-        chrome.runtime.sendMessage({
-          action: 'createTask',
-          videoUrl: videoUrl,
-          options: {
-            uploadDouyin,
-            uploadXiaohongshu
+        
+        // 提交按钮
+        if (action === 'submit') {
+          const videoUrl = videoLink.href;
+          
+          if (!selectedPlatforms.douyin && !selectedPlatforms.xiaohongshu) {
+            showToast('⚠️ 请至少选择一个发布平台');
+            return;
           }
-        }, (response) => {
-          if (response.success) {
-            showToast('✅ 任务已创建，视频将自动处理并发布');
-          } else {
-            showToast('❌ ' + response.error);
+          
+          // 根据处理模式设置选项
+          const options = {
+            uploadDouyin: selectedPlatforms.douyin,
+            uploadXiaohongshu: selectedPlatforms.xiaohongshu,
+            processingMode: selectedMode
+          };
+          
+          // 根据模式设置具体参数
+          switch (selectedMode) {
+            case 'full_translation':
+              options.add_subtitles = true;
+              options.add_tts = true;
+              options.skip_translation = false;
+              break;
+            case 'subtitles_only':
+              options.add_subtitles = true;
+              options.add_tts = false;
+              options.skip_translation = false;
+              break;
+            case 'direct_transfer':
+              options.add_subtitles = false;
+              options.add_tts = false;
+              options.skip_translation = true;
+              break;
+            case 'smart':
+              // 让后端自动判断
+              options.auto_detect_mode = true;
+              break;
           }
-        });
 
-        // Hide menu
-        button.querySelector('.idubb-menu').style.display = 'none';
+          // Send to background script
+          chrome.runtime.sendMessage({
+            action: 'createTask',
+            videoUrl: videoUrl,
+            options: options
+          }, (response) => {
+            if (response.success) {
+              const modeNames = {
+                'full_translation': '完整翻译',
+                'subtitles_only': '仅字幕',
+                'direct_transfer': '直接搬运',
+                'smart': '智能判断'
+              };
+              showToast(`✅ 任务已创建 [${modeNames[selectedMode]}]`);
+            } else {
+              showToast('❌ ' + response.error);
+            }
+          });
+
+          // Hide menu
+          button.querySelector('.idubb-menu').style.display = 'none';
+        }
       });
     });
+    
+    // 初始化默认选中状态
+    button.querySelector('[data-mode="smart"]')?.classList.add('selected');
+    button.querySelector('[data-action="douyin"]')?.classList.add('selected');
 
     item.appendChild(button);
   });
@@ -245,50 +400,147 @@ function addIdubbOptionToMenu(menuContainer) {
     <div class="idubb-menu-header" style="padding: 8px 16px; color: #fe2c55; font-weight: bold; font-size: 12px;">
       🚀 iDubb 一键发布
     </div>
-    <button class="idubb-tiktok-btn" data-action="douyin" style="display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 16px; background: none; border: none; color: white; cursor: pointer; font-size: 14px; text-align: left;">
-      <span>📱</span> 发布到抖音
+    <div style="padding: 4px 16px; color: #888; font-size: 11px;">处理模式</div>
+    <button class="idubb-tiktok-btn idubb-mode-btn" data-mode="full_translation" style="display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 16px; background: none; border: none; color: white; cursor: pointer; font-size: 13px; text-align: left;">
+      <span>🎙️</span> 完整翻译
     </button>
-    <button class="idubb-tiktok-btn" data-action="xiaohongshu" style="display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 16px; background: none; border: none; color: white; cursor: pointer; font-size: 14px; text-align: left;">
-      <span>📕</span> 发布到小红书
+    <button class="idubb-tiktok-btn idubb-mode-btn" data-mode="subtitles_only" style="display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 16px; background: none; border: none; color: white; cursor: pointer; font-size: 13px; text-align: left;">
+      <span>📝</span> 仅字幕
     </button>
-    <button class="idubb-tiktok-btn" data-action="both" style="display: flex; align-items: center; gap: 12px; width: 100%; padding: 12px 16px; background: none; border: none; color: white; cursor: pointer; font-size: 14px; text-align: left;">
-      <span>🎯</span> 全部平台
+    <button class="idubb-tiktok-btn idubb-mode-btn" data-mode="direct_transfer" style="display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 16px; background: none; border: none; color: white; cursor: pointer; font-size: 13px; text-align: left;">
+      <span>📦</span> 直接搬运
+    </button>
+    <button class="idubb-tiktok-btn idubb-mode-btn selected" data-mode="smart" style="display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 16px; background: rgba(254,44,85,0.2); border: none; color: white; cursor: pointer; font-size: 13px; text-align: left;">
+      <span>🤖</span> 智能判断 ✓
+    </button>
+    <div style="height: 1px; background: rgba(255,255,255,0.1); margin: 8px 0;"></div>
+    <div style="padding: 4px 16px; color: #888; font-size: 11px;">发布平台</div>
+    <button class="idubb-tiktok-btn idubb-platform-btn selected" data-platform="douyin" style="display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 16px; background: rgba(254,44,85,0.2); border: none; color: white; cursor: pointer; font-size: 13px; text-align: left;">
+      <span>📱</span> 抖音 ✓
+    </button>
+    <button class="idubb-tiktok-btn idubb-platform-btn" data-platform="xiaohongshu" style="display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 16px; background: none; border: none; color: white; cursor: pointer; font-size: 13px; text-align: left;">
+      <span>📕</span> 小红书
+    </button>
+    <div style="height: 1px; background: rgba(255,255,255,0.1); margin: 8px 0;"></div>
+    <button class="idubb-tiktok-btn idubb-submit-btn" data-action="submit" style="display: flex; align-items: center; justify-content: center; gap: 8px; width: calc(100% - 16px); margin: 8px; padding: 12px 16px; background: #fe2c55; border: none; border-radius: 4px; color: white; cursor: pointer; font-size: 14px; font-weight: bold;">
+      🚀 开始处理
     </button>
   `;
   
+  // 状态追踪
+  let tiktokMenuState = {
+    mode: 'smart',
+    platforms: { douyin: true, xiaohongshu: false }
+  };
+
   // 添加 hover 效果
   idubbContainer.querySelectorAll('.idubb-tiktok-btn').forEach(btn => {
-    btn.addEventListener('mouseenter', () => {
-      btn.style.background = 'rgba(255,255,255,0.1)';
-    });
-    btn.addEventListener('mouseleave', () => {
-      btn.style.background = 'none';
-    });
+    if (!btn.classList.contains('idubb-submit-btn')) {
+      btn.addEventListener('mouseenter', () => {
+        if (!btn.classList.contains('selected')) {
+          btn.style.background = 'rgba(255,255,255,0.1)';
+        }
+      });
+      btn.addEventListener('mouseleave', () => {
+        if (!btn.classList.contains('selected')) {
+          btn.style.background = 'none';
+        }
+      });
+    }
     
     btn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
       
+      const mode = btn.dataset.mode;
+      const platform = btn.dataset.platform;
       const action = btn.dataset.action;
-      const videoUrl = getCurrentVideoUrl() || window.location.href;
       
-      let uploadDouyin = action === 'douyin' || action === 'both';
-      let uploadXiaohongshu = action === 'xiaohongshu' || action === 'both';
+      // 处理模式选择
+      if (mode) {
+        tiktokMenuState.mode = mode;
+        idubbContainer.querySelectorAll('.idubb-mode-btn').forEach(el => {
+          el.classList.remove('selected');
+          el.style.background = 'none';
+          el.innerHTML = el.innerHTML.replace(' ✓', '');
+        });
+        btn.classList.add('selected');
+        btn.style.background = 'rgba(254,44,85,0.2)';
+        btn.innerHTML = btn.innerHTML + ' ✓';
+        return;
+      }
       
-      chrome.runtime.sendMessage({
-        action: 'createTask',
-        videoUrl: videoUrl,
-        options: { uploadDouyin, uploadXiaohongshu }
-      }, (response) => {
-        if (response && response.success) {
-          showToast('✅ 任务已创建: ' + videoUrl.substring(0, 50) + '...');
+      // 平台选择 (toggle)
+      if (platform) {
+        tiktokMenuState.platforms[platform] = !tiktokMenuState.platforms[platform];
+        btn.classList.toggle('selected', tiktokMenuState.platforms[platform]);
+        btn.style.background = tiktokMenuState.platforms[platform] ? 'rgba(254,44,85,0.2)' : 'none';
+        if (tiktokMenuState.platforms[platform]) {
+          if (!btn.innerHTML.includes('✓')) btn.innerHTML = btn.innerHTML + ' ✓';
         } else {
-          showToast('❌ ' + (response?.error || '发送失败'));
+          btn.innerHTML = btn.innerHTML.replace(' ✓', '');
         }
-      });
+        return;
+      }
       
-      // 关闭菜单 - 模拟点击其他地方
-      document.body.click();
+      // 提交
+      if (action === 'submit') {
+        const videoUrl = getCurrentVideoUrl() || window.location.href;
+        
+        if (!tiktokMenuState.platforms.douyin && !tiktokMenuState.platforms.xiaohongshu) {
+          showToast('⚠️ 请至少选择一个发布平台');
+          return;
+        }
+        
+        const options = {
+          uploadDouyin: tiktokMenuState.platforms.douyin,
+          uploadXiaohongshu: tiktokMenuState.platforms.xiaohongshu,
+          processingMode: tiktokMenuState.mode
+        };
+        
+        // 根据模式设置具体参数
+        switch (tiktokMenuState.mode) {
+          case 'full_translation':
+            options.add_subtitles = true;
+            options.add_tts = true;
+            options.skip_translation = false;
+            break;
+          case 'subtitles_only':
+            options.add_subtitles = true;
+            options.add_tts = false;
+            options.skip_translation = false;
+            break;
+          case 'direct_transfer':
+            options.add_subtitles = false;
+            options.add_tts = false;
+            options.skip_translation = true;
+            break;
+          case 'smart':
+            options.auto_detect_mode = true;
+            break;
+        }
+        
+        chrome.runtime.sendMessage({
+          action: 'createTask',
+          videoUrl: videoUrl,
+          options: options
+        }, (response) => {
+          const modeNames = {
+            'full_translation': '完整翻译',
+            'subtitles_only': '仅字幕',
+            'direct_transfer': '直接搬运',
+            'smart': '智能判断'
+          };
+          if (response && response.success) {
+            showToast(`✅ 任务已创建 [${modeNames[tiktokMenuState.mode]}]`);
+          } else {
+            showToast('❌ ' + (response?.error || '发送失败'));
+          }
+        });
+        
+        // 关闭菜单
+        document.body.click();
+      }
     });
   });
   

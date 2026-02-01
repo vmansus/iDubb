@@ -186,8 +186,57 @@ async function createTask(videoUrl, options) {
   // 强制使用默认 API URL，避免缓存问题
   const apiUrl = DEFAULT_SETTINGS.apiUrl;
   console.log('[iDubb] 使用 API:', apiUrl);
+  console.log('[iDubb] 选项:', options);
 
-  showNotification('处理中', `正在创建任务: ${videoUrl.substring(0, 50)}...`);
+  const modeNames = {
+    'full_translation': '完整翻译',
+    'subtitles_only': '仅字幕',
+    'direct_transfer': '直接搬运',
+    'smart': '智能判断'
+  };
+  const modeName = modeNames[options.processingMode] || '默认';
+  showNotification('处理中', `正在创建任务 [${modeName}]: ${videoUrl.substring(0, 40)}...`);
+
+  // 根据处理模式构建请求参数
+  const taskPayload = {
+    source_url: videoUrl,
+    source_platform: 'tiktok',
+    target_language: options.targetLanguage || 'zh-CN',
+    upload_douyin: options.uploadDouyin || false,
+    upload_xiaohongshu: options.uploadXiaohongshu || false
+  };
+  
+  // 处理模式映射
+  switch (options.processingMode) {
+    case 'full_translation':
+      // 完整翻译：转录+翻译+AI配音
+      taskPayload.add_subtitles = true;
+      taskPayload.add_tts = true;
+      taskPayload.skip_translation = false;
+      taskPayload.replace_original_audio = true;
+      taskPayload.tts_voice = options.ttsVoice || 'zh-CN-XiaoxiaoNeural';
+      break;
+    case 'subtitles_only':
+      // 仅字幕：转录+翻译+嵌入字幕，无配音
+      taskPayload.add_subtitles = true;
+      taskPayload.add_tts = false;
+      taskPayload.skip_translation = false;
+      break;
+    case 'direct_transfer':
+      // 直接搬运：不处理直接上传
+      taskPayload.add_subtitles = false;
+      taskPayload.add_tts = false;
+      taskPayload.skip_translation = true;
+      break;
+    case 'smart':
+    default:
+      // 智能判断：让后端自动选择
+      // 后端会根据视频内容自动判断最佳处理模式
+      taskPayload.add_subtitles = options.add_subtitles !== false;
+      taskPayload.add_tts = options.add_tts !== false;
+      taskPayload.tts_voice = options.ttsVoice || 'zh-CN-XiaoxiaoNeural';
+      break;
+  }
 
   try {
     const response = await fetch(`${apiUrl}/api/tasks`, {
@@ -195,18 +244,7 @@ async function createTask(videoUrl, options) {
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        source_url: videoUrl,
-        source_platform: 'tiktok',
-        target_language: options.targetLanguage || 'zh-CN',
-        add_subtitles: options.addSubtitles !== false,
-        add_tts: options.addTts !== false,
-        tts_voice: options.ttsVoice || 'zh-CN-XiaoxiaoNeural',
-        upload_douyin: options.uploadDouyin || false,
-        upload_xiaohongshu: options.uploadXiaohongshu || false,
-        // Use transfer mode if no translation needed
-        transfer_only: false
-      })
+      body: JSON.stringify(taskPayload)
     });
 
     if (!response.ok) {
