@@ -50,6 +50,9 @@ echo "  安装依赖..."
 pip install -q --upgrade pip
 pip install -q -r requirements.txt
 
+echo "  安装 PaddleOCR..."
+pip install -q paddlepaddle paddleocr
+
 echo "✓ Python 环境就绪"
 
 # 2. 安装前端依赖
