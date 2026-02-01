@@ -492,19 +492,17 @@ function createIdubbMenu(menuContainer) {
   const defaultMode = getDefaultMode();
   const defaultPlatforms = getDefaultPlatforms();
   
-  // 创建我们的菜单项容器 - 紧贴 TikTok 菜单左边
+  // 创建我们的菜单项容器 - 紧贴 TikTok 菜单右边，上边缘对齐
   const idubbContainer = document.createElement('div');
   idubbContainer.className = 'idubb-tiktok-option';
   
-  // 计算 iDubb 菜单宽度 (约 180px)
+  // 放在 TikTok 菜单右边，紧贴着 (间距 2px)
+  let leftPos = menuRect.right + 2;
+  
+  // 如果右边放不下，放左边
   const idubbWidth = 185;
-  
-  // 默认放在 TikTok 菜单左边
-  let leftPos = menuRect.left - idubbWidth - 4;
-  
-  // 如果左边放不下，放右边
-  if (leftPos < 10) {
-    leftPos = menuRect.right + 4;
+  if (leftPos + idubbWidth > window.innerWidth - 10) {
+    leftPos = menuRect.left - idubbWidth - 2;
   }
   
   idubbContainer.style.cssText = `
