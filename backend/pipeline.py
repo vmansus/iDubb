@@ -128,6 +128,11 @@ class ProcessingOptions:
     whisper_model: str = "auto"  # auto, tiny, base, small, medium, large-v3
     whisper_device: str = "auto"  # auto, cpu, cuda, mps (mps only for openai backend)
 
+    # OCR settings (for videos with text overlays instead of speech)
+    use_ocr: bool = False  # Use OCR to extract text from video frames
+    ocr_engine: str = "paddleocr"  # paddleocr (free), openai, anthropic
+    ocr_frame_interval: float = 0.5  # Extract frame every N seconds
+
     # Translation options
     skip_translation: bool = False  # True = subtitles only mode (no translation, no TTS)
     translation_engine: str = "google"  # google, deepl, gpt, claude
@@ -1275,7 +1280,69 @@ class VideoPipeline:
                 await self._update_task(task, progress=35, message="使用视频自带字幕完成")
                 return True
 
-            # Fall back to AI transcription
+            # Check if OCR mode is enabled (for videos with text overlays, no speech)
+            if opts.use_ocr:
+                logger.info("Using OCR mode to extract text from video frames")
+                await self._update_task(task, TaskStatus.TRANSCRIBING, 20, "OCR识别画面文字中...")
+                
+                from utils.video_ocr import VideoOCR
+                
+                # Get API key for paid engines
+                api_key = None
+                if opts.ocr_engine in ["openai", "anthropic"]:
+                    from settings_store import settings_store
+                    global_settings = settings_store.load()
+                    if opts.ocr_engine == "openai":
+                        api_key = global_settings.translation.openai_api_key
+                    else:
+                        api_key = global_settings.translation.anthropic_api_key
+                    if not api_key:
+                        raise Exception(f"API key not configured for OCR engine: {opts.ocr_engine}")
+                
+                ocr = VideoOCR(
+                    engine=opts.ocr_engine,
+                    api_key=api_key,
+                    frame_interval=opts.ocr_frame_interval,
+                )
+                
+                result = await ocr.extract_text(task.video_path)
+                
+                if not result.success:
+                    raise Exception(f"OCR failed: {result.error}")
+                
+                task_dir = await task.get_output_dir()
+                task.subtitle_path = task_dir / "original.srt"
+                
+                if result.segments:
+                    srt_content = ocr.segments_to_srt(result.segments)
+                    task.subtitle_path.write_text(srt_content, encoding="utf-8")
+                    
+                    # Create transcription cache for translation step
+                    from transcription import Transcription, TranscriptSegment
+                    segments = [
+                        TranscriptSegment(start=seg.start_time, end=seg.end_time, text=seg.text)
+                        for seg in result.segments
+                    ]
+                    transcription = Transcription(
+                        text=" ".join(seg.text for seg in result.segments),
+                        segments=segments,
+                        language=opts.source_language
+                    )
+                    self._transcription_cache[task.task_id] = transcription
+                else:
+                    task.subtitle_path.write_text("")
+                    logger.warning("OCR found no text in video")
+                
+                await self._complete_step(task, step_name,
+                    output_files={"original_subtitle": str(task.subtitle_path)},
+                    metadata={"language": opts.source_language, "segments_count": len(result.segments), "source": "ocr"}
+                )
+                from database.task_persistence import task_persistence
+                await task_persistence.save_task_files(task.task_id, subtitle_path=str(task.subtitle_path))
+                await self._update_task(task, progress=35, message=f"OCR识别完成，检测到 {len(result.segments)} 段文字")
+                return True
+
+            # Fall back to AI transcription (Whisper)
             logger.info("No existing subtitles or use_existing_subtitles=False, using AI transcription")
             await self._update_task(task, TaskStatus.TRANSCRIBING, 20, "AI语音识别中...")
 

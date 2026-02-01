@@ -141,6 +141,10 @@ export interface CreateTaskRequest {
   whisper_backend: string  // 'auto', 'faster', 'openai', 'whisperx'
   whisper_model: string    // 'auto', 'faster:tiny', 'faster:base', 'faster:small', etc.
   whisper_device: string   // 'auto', 'cpu', 'cuda', 'mps'
+  // OCR settings
+  use_ocr?: boolean
+  ocr_engine?: string
+  ocr_frame_interval?: number
   add_subtitles: boolean
   dual_subtitles: boolean
   use_existing_subtitles: boolean

@@ -52,6 +52,9 @@ export default function NewTask() {
     whisper_backend: 'faster',
     whisper_model: 'faster:small',  // Default to small for balance of speed/quality
     whisper_device: 'auto',  // auto, cpu, cuda, mps
+    use_ocr: false,  // OCR mode for text overlays
+    ocr_engine: 'paddleocr',
+    ocr_frame_interval: 0.5,
     add_subtitles: true,
     dual_subtitles: true,
     use_existing_subtitles: true,
@@ -882,7 +885,48 @@ export default function NewTask() {
           </div>
         )}
 
-        {/* Transcription Model Selection */}
+        {/* OCR Mode - for videos with text overlays instead of speech */}
+        {options.processing_mode !== 'direct' && (
+          <div className="p-3 bg-amber-50 rounded-md border border-amber-200">
+            <label className="flex items-center">
+              <input
+                type="checkbox"
+                checked={options.use_ocr || false}
+                onChange={(e) => setOptions({ ...options, use_ocr: e.target.checked })}
+                className="rounded border-gray-300 text-amber-600"
+              />
+              <span className="ml-2 text-sm font-medium text-amber-800">🔍 OCR 文字识别模式</span>
+            </label>
+            <p className="text-xs text-amber-600 mt-1 ml-6">
+              适用于无人声、仅有画面文字的视频
+            </p>
+            {options.use_ocr && (
+              <div className="mt-2 ml-6 flex gap-2">
+                <select
+                  value={options.ocr_engine || 'paddleocr'}
+                  onChange={(e) => setOptions({ ...options, ocr_engine: e.target.value })}
+                  className="px-2 py-1 border border-amber-300 rounded text-sm"
+                >
+                  <option value="paddleocr">🆓 PaddleOCR (免费)</option>
+                  <option value="openai">OpenAI GPT-4o</option>
+                  <option value="anthropic">Anthropic Claude</option>
+                </select>
+                <input
+                  type="number"
+                  value={options.ocr_frame_interval || 0.5}
+                  onChange={(e) => setOptions({ ...options, ocr_frame_interval: parseFloat(e.target.value) || 0.5 })}
+                  min="0.25" max="2" step="0.25"
+                  className="w-16 px-2 py-1 border border-amber-300 rounded text-sm"
+                  title="采样间隔(秒)"
+                />
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Transcription Model Selection - hide when OCR enabled */}
+        {!options.use_ocr && (
+        <>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">
             {t('newTask.transcriptionModel')}
@@ -1011,6 +1055,8 @@ export default function NewTask() {
             </div>
           )}
         </div>
+        </>
+        )}
 
         {/* Subtitle Options */}
         <div>
