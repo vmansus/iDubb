@@ -6,7 +6,9 @@
   "permissions": [
     "contextMenus",
     "storage",
-    "activeTab"
+    "activeTab",
+    "scripting",
+    "notifications"
   ],
   "host_permissions": [
     "https://www.tiktok.com/*",

@@ -69,10 +69,34 @@ chrome.runtime.onInstalled.addListener(() => {
 
 // Handle context menu clicks
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  console.log('[iDubb] 右键菜单点击:', info.menuItemId);
+  console.log('[iDubb] 页面 URL:', tab?.url);
+  console.log('[iDubb] 链接 URL:', info.linkUrl);
+  
+  // 先弹个 alert 确认事件触发了
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: (msg) => alert(msg),
+      args: ['iDubb: 正在处理...']
+    });
+  } catch (e) {
+    console.log('[iDubb] 无法弹窗:', e.message);
+  }
+  
   const videoUrl = await getVideoUrl(info, tab);
+  console.log('[iDubb] 获取到视频 URL:', videoUrl);
   
   if (!videoUrl) {
+    console.log('[iDubb] 错误: 无法获取视频链接');
     showNotification('错误', '无法获取视频链接，请确保在 TikTok 视频页面右键点击');
+    // 也用 alert 提示
+    try {
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: () => alert('iDubb 错误: 无法获取视频链接，请确保在 TikTok 视频页面')
+      });
+    } catch (e) {}
     return;
   }
 
