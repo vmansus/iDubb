@@ -881,6 +881,17 @@ export default function TaskDetail() {
                             {/* Transcribe step - whisper model, source language, use existing subtitles */}
                             {stepName === 'transcribe' && (
                               (isFinished || isFailed || isPaused) ? (
+                                taskOptions.options.use_ocr ? (
+                                  /* OCR mode - show OCR engine and frame interval */
+                                  <>
+                                    <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded text-xs">
+                                      🔍 {String(taskOptions.options.ocr_engine || 'paddleocr')}
+                                    </span>
+                                    <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded text-xs">
+                                      {String(taskOptions.options.ocr_frame_interval || 0.5)}s 间隔
+                                    </span>
+                                  </>
+                                ) : (
                                 <>
                                   {/* Use existing subtitles option */}
                                   <select
@@ -950,6 +961,7 @@ export default function TaskDetail() {
                                     </>
                                   )}
                                 </>
+                                )
                               ) : (
                                 <>
                                   {taskOptions.options.use_existing_subtitles ? (
