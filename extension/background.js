@@ -140,20 +140,28 @@ async function getVideoUrl(info, tab) {
 
   // If on TikTok page, try to get current video URL
   if (tab.url && isTikTokUrl(tab.url)) {
-    // Check if it's a video page
-    if (tab.url.includes('/video/') || tab.url.includes('/@')) {
+    console.log('[iDubb] 在 TikTok 页面，URL:', tab.url);
+    
+    // Check if it's a video page (直接返回)
+    if (tab.url.includes('/video/')) {
+      console.log('[iDubb] 是视频详情页，直接使用 URL');
       return tab.url;
     }
 
-    // Try to get video URL from content script
+    // Try to get video URL from content script (首页 feed 等情况)
+    console.log('[iDubb] 不是视频详情页，尝试从 content script 获取');
     try {
       const response = await chrome.tabs.sendMessage(tab.id, { action: 'getVideoUrl' });
+      console.log('[iDubb] Content script 响应:', response);
       if (response && response.videoUrl) {
         return response.videoUrl;
       }
     } catch (e) {
-      console.log('Content script not ready:', e);
+      console.log('[iDubb] Content script 错误:', e.message);
     }
+    
+    // 如果还是没有，提示用户点击具体视频
+    console.log('[iDubb] 无法获取视频 URL，可能需要点击进入具体视频页面');
   }
 
   return null;
