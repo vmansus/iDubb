@@ -1572,7 +1572,11 @@ class VideoPipeline:
                     {"text": seg.text, "start": seg.start, "end": seg.end}
                     for seg in transcription.segments
                 ]
-                # translated_segments is already a list of dicts
+                # Convert translated_segments to dict format (they are TranscriptSegment objects)
+                translated_segments = [
+                    {"text": seg.text, "start": seg.start, "end": seg.end}
+                    for seg in translated_segments
+                ]
 
             # Configure proofreading
             config = ProofreadingConfig(

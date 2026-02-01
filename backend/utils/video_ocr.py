@@ -3,6 +3,7 @@ Video OCR - Extract text from video frames using vision models or local OCR
 """
 import asyncio
 import base64
+from loguru import logger
 import logging
 import subprocess
 from pathlib import Path
@@ -11,7 +12,7 @@ from typing import List, Optional, Tuple
 import tempfile
 import json
 
-logger = logging.getLogger(__name__)
+# Use loguru logger
 
 
 @dataclass
