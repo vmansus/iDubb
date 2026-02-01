@@ -183,7 +183,7 @@ async function createTask(videoUrl, settings) {
   
   console.log('[iDubb] Creating task with settings:', settings);
 
-  // Build task payload from saved settings
+  // Build task payload - only include relevant settings
   const taskPayload = {
     source_url: videoUrl,
     source_platform: detectPlatform(videoUrl),
@@ -192,18 +192,6 @@ async function createTask(videoUrl, settings) {
     // Language
     source_language: settings.sourceLanguage,
     target_language: settings.targetLanguage,
-    // Translation
-    translation_engine: settings.translationEngine,
-    // Subtitles
-    add_subtitles: settings.addSubtitles,
-    dual_subtitles: settings.dualSubtitles,
-    subtitle_preset: settings.subtitlePreset || undefined,
-    // TTS
-    add_tts: settings.addTts,
-    tts_service: settings.ttsService,
-    tts_voice: settings.ttsVoice,
-    replace_original_audio: settings.replaceOriginalAudio,
-    original_audio_volume: (settings.originalVolume || 30) / 100,
     // Upload targets
     upload_douyin: settings.uploadDouyin,
     upload_xiaohongshu: settings.uploadXiaohongshu,
@@ -212,11 +200,45 @@ async function createTask(videoUrl, settings) {
 
   // Handle processing mode
   if (settings.processingMode === 'direct_transfer') {
+    // 直接搬运：不需要翻译、字幕、配音
     taskPayload.skip_translation = true;
     taskPayload.add_subtitles = false;
     taskPayload.add_tts = false;
   } else if (settings.processingMode === 'subtitles_only') {
+    // 仅字幕：需要翻译和字幕，不需要配音
+    taskPayload.add_subtitles = true;
     taskPayload.add_tts = false;
+    taskPayload.translation_engine = settings.translationEngine;
+    // 字幕相关配置
+    taskPayload.dual_subtitles = settings.dualSubtitles;
+    if (settings.subtitlePreset) {
+      taskPayload.subtitle_preset = settings.subtitlePreset;
+    }
+  } else {
+    // full_translation 或 smart：根据实际配置决定
+    taskPayload.add_subtitles = settings.addSubtitles;
+    taskPayload.add_tts = settings.addTts;
+    
+    // 只在需要翻译时传翻译配置
+    if (settings.addSubtitles || settings.addTts) {
+      taskPayload.translation_engine = settings.translationEngine;
+    }
+    
+    // 只在需要字幕时传字幕配置
+    if (settings.addSubtitles) {
+      taskPayload.dual_subtitles = settings.dualSubtitles;
+      if (settings.subtitlePreset) {
+        taskPayload.subtitle_preset = settings.subtitlePreset;
+      }
+    }
+    
+    // 只在需要配音时传 TTS 配置
+    if (settings.addTts) {
+      taskPayload.tts_service = settings.ttsService;
+      taskPayload.tts_voice = settings.ttsVoice;
+      taskPayload.replace_original_audio = settings.replaceOriginalAudio;
+      taskPayload.original_audio_volume = (settings.originalVolume || 30) / 100;
+    }
   }
 
   // Remove undefined values

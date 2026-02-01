@@ -289,30 +289,51 @@ function addQuickActionButton() {
             return;
           }
           
-          // Build options from saved settings + current selections
+          // Build options - only include relevant settings based on mode
           const options = {
-            ...savedSettings,  // Include all saved settings
             uploadDouyin: selectedPlatforms.douyin,
             uploadXiaohongshu: selectedPlatforms.xiaohongshu,
-            processingMode: selectedMode
+            processingMode: selectedMode,
+            // 基础设置
+            apiUrl: savedSettings?.apiUrl,
+            videoQuality: savedSettings?.videoQuality,
+            sourceLanguage: savedSettings?.sourceLanguage,
+            targetLanguage: savedSettings?.targetLanguage
           };
           
-          // 根据模式设置具体参数
+          // 根据模式设置具体参数，只传必要的配置
           switch (selectedMode) {
             case 'full_translation':
               options.add_subtitles = true;
               options.add_tts = true;
               options.skip_translation = false;
+              // 字幕配置
+              options.dualSubtitles = savedSettings?.dualSubtitles;
+              options.subtitlePreset = savedSettings?.subtitlePreset;
+              // TTS 配置
+              options.ttsService = savedSettings?.ttsService;
+              options.ttsVoice = savedSettings?.ttsVoice;
+              options.replaceOriginalAudio = savedSettings?.replaceOriginalAudio;
+              options.originalVolume = savedSettings?.originalVolume;
+              // 翻译配置
+              options.translationEngine = savedSettings?.translationEngine;
               break;
             case 'subtitles_only':
               options.add_subtitles = true;
-              options.add_tts = false;
+              options.add_tts = false;  // 不要配音
               options.skip_translation = false;
+              // 字幕配置
+              options.dualSubtitles = savedSettings?.dualSubtitles;
+              options.subtitlePreset = savedSettings?.subtitlePreset;
+              // 翻译配置
+              options.translationEngine = savedSettings?.translationEngine;
+              // 不传 TTS 配置
               break;
             case 'direct_transfer':
-              options.add_subtitles = false;
-              options.add_tts = false;
+              options.add_subtitles = false;  // 不要字幕
+              options.add_tts = false;  // 不要配音
               options.skip_translation = true;
+              // 不传字幕和 TTS 配置
               break;
             case 'smart':
               // 让后端自动判断
@@ -561,32 +582,54 @@ function addIdubbOptionToMenu(menuContainer) {
           return;
         }
         
-        // Build options from saved settings + current selections
+        // Build options - only include relevant settings based on mode
         const options = {
-          ...savedSettings,  // Include all saved settings
           uploadDouyin: tiktokMenuState.platforms.douyin,
           uploadXiaohongshu: tiktokMenuState.platforms.xiaohongshu,
-          processingMode: tiktokMenuState.mode
+          processingMode: tiktokMenuState.mode,
+          // 基础设置
+          apiUrl: savedSettings?.apiUrl,
+          videoQuality: savedSettings?.videoQuality,
+          sourceLanguage: savedSettings?.sourceLanguage,
+          targetLanguage: savedSettings?.targetLanguage
         };
         
-        // 根据模式设置具体参数
+        // 根据模式设置具体参数，只传必要的配置
         switch (tiktokMenuState.mode) {
           case 'full_translation':
             options.add_subtitles = true;
             options.add_tts = true;
             options.skip_translation = false;
+            // 字幕配置
+            options.dualSubtitles = savedSettings?.dualSubtitles;
+            options.subtitlePreset = savedSettings?.subtitlePreset;
+            // TTS 配置
+            options.ttsService = savedSettings?.ttsService;
+            options.ttsVoice = savedSettings?.ttsVoice;
+            options.replaceOriginalAudio = savedSettings?.replaceOriginalAudio;
+            options.originalVolume = savedSettings?.originalVolume;
+            // 翻译配置
+            options.translationEngine = savedSettings?.translationEngine;
             break;
           case 'subtitles_only':
             options.add_subtitles = true;
-            options.add_tts = false;
+            options.add_tts = false;  // 不要配音
             options.skip_translation = false;
+            // 字幕配置
+            options.dualSubtitles = savedSettings?.dualSubtitles;
+            options.subtitlePreset = savedSettings?.subtitlePreset;
+            // 翻译配置
+            options.translationEngine = savedSettings?.translationEngine;
+            // 不传 TTS 配置
             break;
           case 'direct_transfer':
-            options.add_subtitles = false;
-            options.add_tts = false;
+            options.add_subtitles = false;  // 不要字幕
+            options.add_tts = false;  // 不要配音
             options.skip_translation = true;
+            // 不传字幕和 TTS 配置
             break;
           case 'smart':
+            // 让后端自动判断
             options.auto_detect_mode = true;
             break;
         }
