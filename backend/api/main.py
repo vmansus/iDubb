@@ -4917,12 +4917,8 @@ async def generate_task_metadata(task_id: str, request: Request, body: MetadataG
         if not task:
             raise HTTPException(status_code=404, detail="Task not found")
 
-    # Check if transcription is completed
-    if not task.subtitle_path or not task.subtitle_path.exists():
-        raise HTTPException(
-            status_code=400,
-            detail="Transcription not completed. Please run the transcribe step first."
-        )
+    # Check if transcription is completed (optional for transfer-only tasks)
+    has_transcript = task.subtitle_path and task.subtitle_path.exists()
 
     try:
         from metadata import MetadataGenerator
@@ -4940,8 +4936,13 @@ async def generate_task_metadata(task_id: str, request: Request, body: MetadataG
                 detail=f"API key not configured for {engine}. Please configure in settings."
             )
 
-        # Read transcript from subtitle file
-        transcript = task.subtitle_path.read_text(encoding="utf-8")
+        # Read transcript from subtitle file (if available)
+        transcript = ""
+        if has_transcript:
+            transcript = task.subtitle_path.read_text(encoding="utf-8")
+        elif task.video_info:
+            # For transfer-only tasks, use video description as fallback
+            transcript = task.video_info.get("description", "")
 
         # Get original title
         original_title = ""
