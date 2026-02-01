@@ -149,6 +149,7 @@ class SubtitleStyle:
         # Get alignment and convert to ASS format
         alignment_str = style_config.get("alignment", "bottom")
         alignment = cls.alignment_to_ass(alignment_str)
+        logger.info(f"[SubtitleStyle.from_settings] alignment: '{alignment_str}' -> ASS {alignment}")
 
         # Get back opacity for BorderStyle determination
         back_opacity = style_config.get("back_opacity", 0)
