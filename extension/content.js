@@ -470,7 +470,22 @@ function addIdubbOptionToMenu(menuContainer) {
   const lastItem = menuItems[menuItems.length - 1];
   if (!lastItem) return;
   
-  // 获取 TikTok 菜单的位置，把 iDubb 菜单放在旁边
+  // 等待 TikTok 菜单渲染完成后再获取位置
+  requestAnimationFrame(() => {
+    setTimeout(() => {
+      createIdubbMenu(menuContainer);
+    }, 50);
+  });
+}
+
+// 创建 iDubb 菜单
+function createIdubbMenu(menuContainer) {
+  // 再次检查避免重复
+  if (document.querySelector('.idubb-tiktok-option')) {
+    document.querySelectorAll('.idubb-tiktok-option').forEach(el => el.remove());
+  }
+  
+  // 获取 TikTok 菜单的位置
   const menuRect = menuContainer.getBoundingClientRect();
   
   // Get default values from saved settings
