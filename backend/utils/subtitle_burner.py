@@ -436,10 +436,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             for _, start, end, text in matches:
                 start_ass = srt_time_to_ass(start)
                 end_ass = srt_time_to_ass(end)
-                text_clean = text.strip().replace('\n', '\\N')
-                # Apply max_width wrapping if needed
-                if max_width_pct < 90:
-                    text_clean = wrap_text(text.strip(), max_chars_per_line)
+                # Always apply max_width wrapping
+                text_clean = wrap_text(text.strip(), max_chars_per_line)
+                logger.debug(f"[ASS] Original: '{text.strip()[:30]}...' -> Wrapped: '{text_clean[:30]}...' (max_chars={max_chars_per_line})")
                 events.append(f"Dialogue: 0,{start_ass},{end_ass},Default,,0,0,0,,{text_clean}")
 
             ass_content += '\n'.join(events)
