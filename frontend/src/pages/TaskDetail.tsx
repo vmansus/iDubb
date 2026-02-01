@@ -840,7 +840,7 @@ export default function TaskDetail() {
                                 || currentVideoQuality
                                 || currentValue
 
-                              return (isFinished || isFailed || isPaused) ? (
+                              return (step?.status !== 'running') ? (
                                 <select
                                   value={currentValue}
                                   onFocus={() => setFetchVideoInfo(true)} // Lazy load on focus
@@ -880,7 +880,7 @@ export default function TaskDetail() {
 
                             {/* Transcribe step - whisper model, source language, use existing subtitles */}
                             {stepName === 'transcribe' && (
-                              (isFinished || isFailed || isPaused) ? (
+                              (step?.status !== 'running') ? (
                                 taskOptions.options.use_ocr ? (
                                   /* OCR mode - editable OCR engine and frame interval */
                                   <>
@@ -1009,7 +1009,7 @@ export default function TaskDetail() {
 
                             {/* Translate step - translation engine & target language */}
                             {stepName === 'translate' && (
-                              (isFinished || isFailed || isPaused) ? (
+                              (step?.status !== 'running') ? (
                                 <>
                                   <select
                                     value={String(editedOptions.translation_engine ?? taskOptions.options.translation_engine ?? '')}
@@ -1051,7 +1051,7 @@ export default function TaskDetail() {
 
                             {/* TTS step - tts service, voice, and add_tts toggle */}
                             {stepName === 'tts' && (
-                              (isFinished || isFailed || isPaused) ? (
+                              (step?.status !== 'running') ? (
                                 <>
                                   <label className="flex items-center gap-1 cursor-pointer">
                                     <input
@@ -1117,7 +1117,7 @@ export default function TaskDetail() {
 
                             {/* Process video step - subtitle preset */}
                             {stepName === 'process_video' && (
-                              (isFinished || isFailed || isPaused) ? (
+                              (step?.status !== 'running') ? (
                                 <>
                                   {taskOptions.options.dual_subtitles && (
                                     <span className="px-2 py-0.5 bg-blue-100 text-blue-600 rounded">{t('taskDetail.options.dualSubtitles')}</span>
@@ -1155,7 +1155,7 @@ export default function TaskDetail() {
 
                             {/* Upload step - platform checkboxes (only enabled after metadata approval) */}
                             {stepName === 'upload' && (
-                              (isFinished || isFailed || isPaused) ? (
+                              (step?.status !== 'running') ? (
                                 <div className="flex flex-wrap gap-2 items-center">
                                   {/* Show approval status hint */}
                                   {!task.metadata_approved && (
