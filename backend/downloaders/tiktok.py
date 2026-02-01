@@ -76,6 +76,8 @@ class TikTokDownloader(BaseDownloader):
 
     async def download(self, url: str, quality: str = "1080p", **kwargs) -> DownloadResult:
         """Download TikTok video"""
+        cancel_check = kwargs.get('cancel_check')
+        
         try:
             video_info = await self.get_video_info(url)
             if not video_info:
@@ -87,11 +89,30 @@ class TikTokDownloader(BaseDownloader):
                     error="Failed to get video info"
                 )
 
+            # Check for cancellation
+            if cancel_check and cancel_check():
+                return DownloadResult(
+                    success=False,
+                    video_path=None,
+                    audio_path=None,
+                    video_info=video_info,
+                    error="用户手动停止"
+                )
+
             # Create output filename (no spaces, sanitized)
             safe_title = re.sub(r'[^\w-]', '', video_info.title.replace(' ', '_'))[:50]
             video_filename = f"tiktok_{video_info.video_id}_{safe_title}"
             video_path = self.output_dir / f"{video_filename}.mp4"
             audio_path = self.output_dir / f"{video_filename}.mp3"
+
+            # Custom exception for cancellation
+            class DownloadCancelled(Exception):
+                pass
+
+            # Progress hook with cancellation support
+            def progress_hook(d):
+                if cancel_check and cancel_check():
+                    raise DownloadCancelled("用户手动停止")
 
             # TikTok usually has single format, download best available
             # Use .%(ext)s to let yt-dlp determine the extension
@@ -110,21 +131,40 @@ class TikTokDownloader(BaseDownloader):
                     'key': 'FFmpegVideoConvertor',
                     'preferedformat': 'mp4',
                 }],
+                'progress_hooks': [progress_hook],  # Add cancellation support
             }
 
             download_error = None
+            download_cancelled = False
             def download_video():
-                nonlocal download_error
+                nonlocal download_error, download_cancelled
                 try:
                     with yt_dlp.YoutubeDL(video_opts) as ydl:
                         result = ydl.download([url])
                         logger.debug(f"yt-dlp download result: {result}")
+                except DownloadCancelled:
+                    download_cancelled = True
+                    logger.info("TikTok download cancelled by user")
                 except Exception as e:
-                    download_error = str(e)
-                    logger.error(f"yt-dlp video download error: {e}")
+                    if "用户手动停止" in str(e):
+                        download_cancelled = True
+                        logger.info("TikTok download cancelled by user")
+                    else:
+                        download_error = str(e)
+                        logger.error(f"yt-dlp video download error: {e}")
 
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(None, download_video)
+            
+            # Check for cancellation
+            if download_cancelled:
+                return DownloadResult(
+                    success=False,
+                    video_path=None,
+                    audio_path=None,
+                    video_info=video_info,
+                    error="用户手动停止"
+                )
             
             # Small delay to ensure file is written
             await asyncio.sleep(0.5)

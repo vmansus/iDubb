@@ -1170,7 +1170,8 @@ class VideoPipeline:
             opts.source_url,
             quality=opts.video_quality,
             format_id=opts.format_id,
-            subtitle_language=opts.subtitle_language if opts.use_existing_subtitles else None
+            subtitle_language=opts.subtitle_language if opts.use_existing_subtitles else None,
+            cancel_check=task.is_cancelled
         )
 
         # Check for cancellation after download
@@ -1193,7 +1194,8 @@ class VideoPipeline:
                         opts.source_url,
                         quality=opts.video_quality,
                         format_id=opts.format_id,
-                        subtitle_language=opts.subtitle_language if opts.use_existing_subtitles else None
+                        subtitle_language=opts.subtitle_language if opts.use_existing_subtitles else None,
+                        cancel_check=task.is_cancelled
                     )
                     task.check_cancelled()
                 else:

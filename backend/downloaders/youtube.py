@@ -340,7 +340,8 @@ class YouTubeDownloader(BaseDownloader):
         quality: str = "1080p",
         format_id: Optional[str] = None,
         progress_callback: Optional[Callable[[int, str], None]] = None,
-        subtitle_language: Optional[str] = None
+        subtitle_language: Optional[str] = None,
+        cancel_check: Optional[Callable[[], bool]] = None
     ) -> DownloadResult:
         """
         Download YouTube video with specified quality
@@ -350,6 +351,7 @@ class YouTubeDownloader(BaseDownloader):
             quality: Quality preset (2160p, 1440p, 1080p, 720p, 480p, 360p)
             format_id: Specific format ID (overrides quality)
             progress_callback: Callback function(percent, message) for progress updates
+            cancel_check: Optional callable that returns True if cancellation requested
 
         Returns:
             DownloadResult with video and audio paths
@@ -388,8 +390,17 @@ class YouTubeDownloader(BaseDownloader):
                 logger.info(f"Using quality preset {quality}: target height={quality_config['height']}")
                 logger.info(f"Format selector: {format_str}")
 
-            # Progress hook
+            # Custom exception for cancellation
+            class DownloadCancelled(Exception):
+                pass
+
+            # Progress hook with cancellation support
             def progress_hook(d):
+                # Check for cancellation on every progress update
+                if cancel_check and cancel_check():
+                    logger.info("Download cancelled by user")
+                    raise DownloadCancelled("用户手动停止")
+                
                 if d['status'] == 'downloading':
                     if progress_callback:
                         percent = 0
@@ -457,7 +468,26 @@ class YouTubeDownloader(BaseDownloader):
                     return info
 
             loop = asyncio.get_event_loop()
-            download_info = await loop.run_in_executor(None, download_video)
+            try:
+                download_info = await loop.run_in_executor(None, download_video)
+            except DownloadCancelled:
+                return DownloadResult(
+                    success=False,
+                    video_path=None,
+                    audio_path=None,
+                    video_info=video_info,
+                    error="用户手动停止"
+                )
+            except Exception as e:
+                if "用户手动停止" in str(e):
+                    return DownloadResult(
+                        success=False,
+                        video_path=None,
+                        audio_path=None,
+                        video_info=video_info,
+                        error="用户手动停止"
+                    )
+                raise
 
             # Log actual downloaded format
             if download_info:
@@ -480,6 +510,7 @@ class YouTubeDownloader(BaseDownloader):
                 'keepvideo': True,
                 'ignoreerrors': True,
                 'no_check_certificates': True,
+                'progress_hooks': [progress_hook],  # Add cancellation support
             }
 
             # Add cookies if available
@@ -506,7 +537,27 @@ class YouTubeDownloader(BaseDownloader):
                 with yt_dlp.YoutubeDL(audio_opts) as ydl:
                     ydl.download([url])
 
-            await loop.run_in_executor(None, download_audio)
+            try:
+                await loop.run_in_executor(None, download_audio)
+            except DownloadCancelled:
+                return DownloadResult(
+                    success=False,
+                    video_path=None,
+                    audio_path=None,
+                    video_info=video_info,
+                    error="用户手动停止"
+                )
+            except Exception as e:
+                if "用户手动停止" in str(e):
+                    return DownloadResult(
+                        success=False,
+                        video_path=None,
+                        audio_path=None,
+                        video_info=video_info,
+                        error="用户手动停止"
+                    )
+                # Audio download failure is not critical, continue
+                logger.warning(f"Audio download failed: {e}")
 
             # Try to download subtitles separately (allow failure)
             # This is separate from video download to prevent subtitle errors from failing video
