@@ -403,14 +403,30 @@ Style: Default,{style.font_name},{style.font_size},{style.primary_color},&H00000
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
 
-            # Calculate max characters per line based on max_width
-            # Estimate: Chinese chars ~2x width of Latin chars, avg ~1.5 chars per em
-            # For font_size and max_width%, estimate chars that fit
-            # Conservative estimate: 1080p video, font_size 24-28 = ~40-50 Chinese chars at 100% width
-            base_chars = 45  # Approximate Chinese chars at 100% width for typical font
+            # Calculate max characters per line based on max_width and font_size
+            # For vertical video (9:16), width is ~1080px
+            # For horizontal video (16:9), width is ~1920px
+            # Estimate chars per line: (video_width * max_width% / font_size) * 0.5 (CJK adjustment)
+            # But we don't have video_width here, so use a conservative estimate
+            # 
+            # For font_size 14-16 on vertical video: ~15-20 chars at 90% width
+            # For font_size 24-28 on horizontal video: ~25-35 chars at 90% width
+            #
+            # Use font_size as indicator: smaller font = more chars per line
+            font_size = getattr(style, 'font_size', 24)
+            if font_size <= 16:
+                # Small font (vertical video style) - fewer chars per line
+                base_chars = 22
+            elif font_size <= 22:
+                # Medium font
+                base_chars = 30
+            else:
+                # Large font
+                base_chars = 40
+            
             max_chars_per_line = int(base_chars * max_width_pct / 100)
-            max_chars_per_line = max(10, min(max_chars_per_line, 100))  # Clamp to reasonable range
-            logger.debug(f"[ASS] max_width={max_width_pct}%, max_chars_per_line={max_chars_per_line}")
+            max_chars_per_line = max(8, min(max_chars_per_line, 60))  # Clamp to reasonable range
+            logger.debug(f"[ASS] max_width={max_width_pct}%, font_size={font_size}, max_chars_per_line={max_chars_per_line}")
 
             def wrap_text(text: str, max_chars: int) -> str:
                 """Wrap text to fit within max characters per line"""
