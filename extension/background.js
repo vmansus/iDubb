@@ -6,12 +6,22 @@
 // Default settings
 const DEFAULT_SETTINGS = {
   apiUrl: 'http://localhost:8888',
+  videoQuality: '1080p',
+  processingMode: 'smart',
+  sourceLanguage: 'auto',
+  targetLanguage: 'zh-CN',
+  translationEngine: 'deepseek',
+  addSubtitles: true,
+  dualSubtitles: true,
+  subtitlePreset: '',
+  addTts: true,
+  ttsService: 'edge',
+  ttsVoice: 'zh-CN-XiaoxiaoNeural',
+  replaceOriginalAudio: false,
+  originalVolume: 30,
   uploadDouyin: true,
   uploadXiaohongshu: false,
-  targetLanguage: 'zh-CN',
-  addSubtitles: true,
-  addTts: true,
-  ttsVoice: 'zh-CN-XiaoxiaoNeural'
+  uploadBilibili: false
 };
 
 // Create context menu on install

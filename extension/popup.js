@@ -5,13 +5,31 @@
 
 // DOM elements
 const elements = {
+  // 服务器
   apiUrl: document.getElementById('apiUrl'),
+  // 视频设置
+  videoQuality: document.getElementById('videoQuality'),
+  processingMode: document.getElementById('processingMode'),
+  // 翻译设置
+  sourceLanguage: document.getElementById('sourceLanguage'),
+  targetLanguage: document.getElementById('targetLanguage'),
+  translationEngine: document.getElementById('translationEngine'),
+  // 字幕设置
+  addSubtitles: document.getElementById('addSubtitles'),
+  dualSubtitles: document.getElementById('dualSubtitles'),
+  subtitlePreset: document.getElementById('subtitlePreset'),
+  // 配音设置
+  addTts: document.getElementById('addTts'),
+  ttsService: document.getElementById('ttsService'),
+  ttsVoice: document.getElementById('ttsVoice'),
+  replaceOriginalAudio: document.getElementById('replaceOriginalAudio'),
+  originalVolume: document.getElementById('originalVolume'),
+  originalVolumeValue: document.getElementById('originalVolumeValue'),
+  // 发布设置
   uploadDouyin: document.getElementById('uploadDouyin'),
   uploadXiaohongshu: document.getElementById('uploadXiaohongshu'),
-  targetLanguage: document.getElementById('targetLanguage'),
-  addSubtitles: document.getElementById('addSubtitles'),
-  addTts: document.getElementById('addTts'),
-  ttsVoice: document.getElementById('ttsVoice'),
+  uploadBilibili: document.getElementById('uploadBilibili'),
+  // UI
   saveBtn: document.getElementById('saveBtn'),
   status: document.getElementById('status'),
   pendingVideoSection: document.getElementById('pendingVideoSection'),
@@ -23,25 +41,92 @@ const elements = {
 // Current pending video URL
 let pendingVideoUrl = null;
 
+// Default settings
+const DEFAULT_SETTINGS = {
+  apiUrl: 'http://localhost:8888',
+  videoQuality: '1080p',
+  processingMode: 'smart',
+  sourceLanguage: 'auto',
+  targetLanguage: 'zh-CN',
+  translationEngine: 'deepseek',
+  addSubtitles: true,
+  dualSubtitles: true,
+  subtitlePreset: '',
+  addTts: true,
+  ttsService: 'edge',
+  ttsVoice: 'zh-CN-XiaoxiaoNeural',
+  replaceOriginalAudio: false,
+  originalVolume: 30,
+  uploadDouyin: true,
+  uploadXiaohongshu: false,
+  uploadBilibili: false
+};
+
 // Load settings on popup open
 document.addEventListener('DOMContentLoaded', async () => {
   await loadSettings();
   await checkPendingVideo();
+  setupEventListeners();
 });
+
+// Setup event listeners
+function setupEventListeners() {
+  // Volume slider
+  elements.originalVolume.addEventListener('input', () => {
+    elements.originalVolumeValue.textContent = elements.originalVolume.value + '%';
+  });
+  
+  // Processing mode changes
+  elements.processingMode.addEventListener('change', () => {
+    const mode = elements.processingMode.value;
+    // 根据模式自动设置相关选项
+    switch (mode) {
+      case 'full_translation':
+        elements.addSubtitles.checked = true;
+        elements.addTts.checked = true;
+        break;
+      case 'subtitles_only':
+        elements.addSubtitles.checked = true;
+        elements.addTts.checked = false;
+        break;
+      case 'direct_transfer':
+        elements.addSubtitles.checked = false;
+        elements.addTts.checked = false;
+        break;
+    }
+  });
+}
 
 // Load saved settings
 async function loadSettings() {
   return new Promise((resolve) => {
     chrome.storage.sync.get('settings', (data) => {
-      const settings = data.settings || {};
+      const settings = { ...DEFAULT_SETTINGS, ...data.settings };
       
-      elements.apiUrl.value = settings.apiUrl || 'http://localhost:8000';
-      elements.uploadDouyin.checked = settings.uploadDouyin || false;
-      elements.uploadXiaohongshu.checked = settings.uploadXiaohongshu || false;
-      elements.targetLanguage.value = settings.targetLanguage || 'zh-CN';
-      elements.addSubtitles.checked = settings.addSubtitles !== false;
-      elements.addTts.checked = settings.addTts !== false;
-      elements.ttsVoice.value = settings.ttsVoice || 'zh-CN-XiaoxiaoNeural';
+      // 服务器
+      elements.apiUrl.value = settings.apiUrl;
+      // 视频设置
+      elements.videoQuality.value = settings.videoQuality;
+      elements.processingMode.value = settings.processingMode;
+      // 翻译设置
+      elements.sourceLanguage.value = settings.sourceLanguage;
+      elements.targetLanguage.value = settings.targetLanguage;
+      elements.translationEngine.value = settings.translationEngine;
+      // 字幕设置
+      elements.addSubtitles.checked = settings.addSubtitles;
+      elements.dualSubtitles.checked = settings.dualSubtitles;
+      elements.subtitlePreset.value = settings.subtitlePreset;
+      // 配音设置
+      elements.addTts.checked = settings.addTts;
+      elements.ttsService.value = settings.ttsService;
+      elements.ttsVoice.value = settings.ttsVoice;
+      elements.replaceOriginalAudio.checked = settings.replaceOriginalAudio;
+      elements.originalVolume.value = settings.originalVolume;
+      elements.originalVolumeValue.textContent = settings.originalVolume + '%';
+      // 发布设置
+      elements.uploadDouyin.checked = settings.uploadDouyin;
+      elements.uploadXiaohongshu.checked = settings.uploadXiaohongshu;
+      elements.uploadBilibili.checked = settings.uploadBilibili;
       
       resolve();
     });
@@ -65,20 +150,34 @@ async function checkPendingVideo() {
   });
 }
 
-// Save settings
-elements.saveBtn.addEventListener('click', async () => {
-  const settings = {
-    apiUrl: elements.apiUrl.value.trim() || 'http://localhost:8000',
+// Get current settings from form
+function getFormSettings() {
+  return {
+    apiUrl: elements.apiUrl.value.trim() || DEFAULT_SETTINGS.apiUrl,
+    videoQuality: elements.videoQuality.value,
+    processingMode: elements.processingMode.value,
+    sourceLanguage: elements.sourceLanguage.value,
+    targetLanguage: elements.targetLanguage.value,
+    translationEngine: elements.translationEngine.value,
+    addSubtitles: elements.addSubtitles.checked,
+    dualSubtitles: elements.dualSubtitles.checked,
+    subtitlePreset: elements.subtitlePreset.value,
+    addTts: elements.addTts.checked,
+    ttsService: elements.ttsService.value,
+    ttsVoice: elements.ttsVoice.value,
+    replaceOriginalAudio: elements.replaceOriginalAudio.checked,
+    originalVolume: parseInt(elements.originalVolume.value),
     uploadDouyin: elements.uploadDouyin.checked,
     uploadXiaohongshu: elements.uploadXiaohongshu.checked,
-    targetLanguage: elements.targetLanguage.value,
-    addSubtitles: elements.addSubtitles.checked,
-    addTts: elements.addTts.checked,
-    ttsVoice: elements.ttsVoice.value
+    uploadBilibili: elements.uploadBilibili.checked
   };
+}
 
+// Save settings
+elements.saveBtn.addEventListener('click', async () => {
+  const settings = getFormSettings();
   chrome.storage.sync.set({ settings }, () => {
-    showStatus('设置已保存', 'success');
+    showStatus('✅ 设置已保存', 'success');
   });
 });
 
@@ -86,35 +185,46 @@ elements.saveBtn.addEventListener('click', async () => {
 elements.publishBtn.addEventListener('click', async () => {
   if (!pendingVideoUrl) return;
 
-  const settings = {
-    apiUrl: elements.apiUrl.value.trim() || 'http://localhost:8000',
-    uploadDouyin: elements.uploadDouyin.checked,
-    uploadXiaohongshu: elements.uploadXiaohongshu.checked,
-    targetLanguage: elements.targetLanguage.value,
-    addSubtitles: elements.addSubtitles.checked,
-    addTts: elements.addTts.checked,
-    ttsVoice: elements.ttsVoice.value
-  };
+  const settings = getFormSettings();
 
   elements.publishBtn.disabled = true;
   elements.publishBtn.textContent = '处理中...';
 
   try {
+    // 构建任务参数
+    const taskPayload = {
+      source_url: pendingVideoUrl,
+      source_platform: 'tiktok',
+      video_quality: settings.videoQuality,
+      source_language: settings.sourceLanguage,
+      target_language: settings.targetLanguage,
+      translation_engine: settings.translationEngine,
+      add_subtitles: settings.addSubtitles,
+      dual_subtitles: settings.dualSubtitles,
+      subtitle_preset: settings.subtitlePreset || undefined,
+      add_tts: settings.addTts,
+      tts_service: settings.ttsService,
+      tts_voice: settings.ttsVoice,
+      replace_original_audio: settings.replaceOriginalAudio,
+      original_audio_volume: settings.originalVolume / 100,
+      upload_douyin: settings.uploadDouyin,
+      upload_xiaohongshu: settings.uploadXiaohongshu,
+      upload_bilibili: settings.uploadBilibili
+    };
+    
+    // 根据处理模式调整参数
+    if (settings.processingMode === 'direct_transfer') {
+      taskPayload.skip_translation = true;
+      taskPayload.add_subtitles = false;
+      taskPayload.add_tts = false;
+    }
+
     const response = await fetch(`${settings.apiUrl}/api/tasks`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        source_url: pendingVideoUrl,
-        source_platform: 'tiktok',
-        target_language: settings.targetLanguage,
-        add_subtitles: settings.addSubtitles,
-        add_tts: settings.addTts,
-        tts_voice: settings.ttsVoice,
-        upload_douyin: settings.uploadDouyin,
-        upload_xiaohongshu: settings.uploadXiaohongshu
-      })
+      body: JSON.stringify(taskPayload)
     });
 
     if (!response.ok) {
@@ -123,13 +233,13 @@ elements.publishBtn.addEventListener('click', async () => {
     }
 
     const result = await response.json();
-    showStatus(`任务已创建: ${result.task_id}`, 'success');
+    showStatus(`✅ 任务已创建: ${result.task_id}`, 'success');
     
     // Hide pending section
     elements.pendingVideoSection.style.display = 'none';
     pendingVideoUrl = null;
   } catch (error) {
-    showStatus(`错误: ${error.message}`, 'error');
+    showStatus(`❌ 错误: ${error.message}`, 'error');
   } finally {
     elements.publishBtn.disabled = false;
     elements.publishBtn.textContent = '🚀 发布';
