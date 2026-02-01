@@ -352,7 +352,7 @@ class VideoOCR:
                 if normalized:
                     current_text = text
                     start_time = timestamp
-            elif normalized != self._normalize_text(current_text):
+            elif self._text_similarity(text, current_text) < 0.6:  # 60% similarity threshold
                 if current_text:
                     end_time = timestamp
                     if end_time - start_time >= self.min_text_duration:
@@ -377,7 +377,24 @@ class VideoOCR:
         """Normalize text for comparison"""
         if not text:
             return ""
-        return " ".join(text.lower().split())
+        # Remove special chars, keep only alphanumeric and spaces
+        normalized = re.sub(r'[^a-zA-Z0-9\s]', '', text.lower())
+        return " ".join(normalized.split())
+    
+    def _text_similarity(self, text1: str, text2: str) -> float:
+        """Calculate similarity ratio between two texts (0.0 to 1.0)"""
+        if not text1 or not text2:
+            return 0.0
+        n1, n2 = self._normalize_text(text1), self._normalize_text(text2)
+        if not n1 or not n2:
+            return 0.0
+        # Simple word overlap similarity
+        words1, words2 = set(n1.split()), set(n2.split())
+        if not words1 or not words2:
+            return 0.0
+        intersection = len(words1 & words2)
+        union = len(words1 | words2)
+        return intersection / union if union > 0 else 0.0
     
     def segments_to_srt(self, segments: List[OCRSegment]) -> str:
         """Convert segments to SRT format"""
