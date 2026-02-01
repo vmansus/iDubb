@@ -4888,6 +4888,7 @@ class MetadataGenerateRequest(BaseModel):
     max_keywords: int = Field(10, description="Maximum number of keywords", ge=1, le=20)
     preset_id: Optional[str] = Field(None, description="Metadata preset ID to use (overrides title_prefix and custom_signature)")
     use_ai_preset_selection: bool = Field(False, description="Use AI to automatically select best preset")
+    platform: str = Field("generic", description="Target platform (douyin, bilibili, xiaohongshu, generic)")
 
 
 class MetadataResponse(BaseModel):
@@ -5017,7 +5018,8 @@ async def generate_task_metadata(task_id: str, request: Request, body: MetadataG
             target_language=body.target_language,
             title_prefix=title_prefix,
             custom_signature=signature,
-            max_keywords=body.max_keywords or metadata_settings.max_keywords
+            max_keywords=body.max_keywords or metadata_settings.max_keywords,
+            platform=body.platform
         )
 
         return MetadataResponse(
