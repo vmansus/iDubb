@@ -455,7 +455,15 @@ function injectIntoTikTokMenu() {
 
 // Add iDubb option to TikTok's menu
 function addIdubbOptionToMenu(menuContainer) {
-  // 删除旧的菜单
+  // 如果这个 TikTok 菜单已经处理过，直接返回
+  if (menuContainer.dataset.idubbProcessed === 'true') {
+    return;
+  }
+  
+  // 标记为已处理
+  menuContainer.dataset.idubbProcessed = 'true';
+  
+  // 删除旧的菜单（可能是之前其他菜单留下的）
   document.querySelectorAll('.idubb-tiktok-option').forEach(el => el.remove());
   
   // 找到菜单项列表
