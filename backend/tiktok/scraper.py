@@ -34,6 +34,7 @@ async def scrape_tiktok_tag(tag: str, max_videos: int = 20, timeout: int = 30000
         return []
     
     videos = []
+    api_videos = []  # Videos captured from API responses
     
     async with async_playwright() as p:
         # Launch browser
@@ -52,6 +53,23 @@ async def scrape_tiktok_tag(tag: str, max_videos: int = 20, timeout: int = 30000
             
             page = await context.new_page()
             
+            # Intercept API responses to capture video data
+            async def handle_api_response(response):
+                try:
+                    url = response.url
+                    if 'api/challenge/item_list' in url:
+                        body = await response.json()
+                        if 'itemList' in body and body['itemList']:
+                            for item in body['itemList']:
+                                video = extract_video_from_api_item(item)
+                                if video:
+                                    api_videos.append(video)
+                            logger.info(f"Captured {len(body['itemList'])} videos from API response")
+                except Exception as e:
+                    logger.debug(f"Failed to parse API response: {e}")
+            
+            page.on('response', handle_api_response)
+            
             # Navigate to tag page
             url = f'https://www.tiktok.com/tag/{tag}'
             logger.info(f"Navigating to {url}")
@@ -64,22 +82,25 @@ async def scrape_tiktok_tag(tag: str, max_videos: int = 20, timeout: int = 30000
             except:
                 logger.debug("Challenge item selector not found, continuing...")
             
-            # Wait a bit for JS to populate data
+            # Wait a bit for API calls to complete
             await asyncio.sleep(2)
             
-            # Scroll to load more videos
+            # Scroll to load more videos (triggers more API calls)
             for _ in range(3):
                 await page.evaluate('window.scrollBy(0, window.innerHeight)')
                 await asyncio.sleep(1)
             
-            # Try JSON extraction FIRST (more reliable for stats)
-            logger.info("Trying to extract from page JSON...")
-            videos = await extract_from_page_json(page)
-            
-            # If JSON extraction got videos with stats, use those
-            if videos and any(v.get('view_count', 0) > 0 for v in videos):
-                logger.info(f"Got {len(videos)} videos from JSON with stats")
+            # Use API-captured videos if available (preferred - has full stats)
+            if api_videos:
+                logger.info(f"Got {len(api_videos)} videos from API interception with full stats")
+                videos = api_videos
             else:
+                # Fallback: Try JSON extraction from page
+                logger.info("No API videos captured, trying page JSON extraction...")
+                videos = await extract_from_page_json(page)
+            
+            # If still no videos with stats, fallback to DOM extraction
+            if not videos or not any(v.get('view_count', 0) > 0 for v in videos):
                 # Fallback to DOM extraction
                 logger.info("JSON extraction incomplete, trying DOM extraction...")
                 video_elements = await page.query_selector_all('[data-e2e="challenge-item"]')
@@ -95,7 +116,7 @@ async def scrape_tiktok_tag(tag: str, max_videos: int = 20, timeout: int = 30000
                         logger.warning(f"Failed to extract video data: {e}")
                         continue
                 
-                # Merge: prefer JSON data but add DOM videos if they have more info
+                # Merge: prefer API/JSON data but add DOM videos if they have more info
                 if dom_videos:
                     if not videos:
                         videos = dom_videos
@@ -202,6 +223,51 @@ async def extract_video_data(element) -> Optional[Dict[str, Any]]:
         }
     except Exception as e:
         logger.debug(f"Extract failed: {e}")
+        return None
+
+
+def extract_video_from_api_item(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Extract video data from TikTok API response item"""
+    try:
+        video_id = str(item.get('id', ''))
+        if not video_id:
+            return None
+        
+        # Get author info
+        author = item.get('author', {})
+        author_id = author.get('uniqueId', 'unknown')
+        
+        # Get stats
+        stats = item.get('stats', {})
+        view_count = stats.get('playCount', 0)
+        like_count = stats.get('diggCount', 0)
+        comment_count = stats.get('commentCount', 0)
+        share_count = stats.get('shareCount', 0)
+        
+        # Get video info
+        video_info = item.get('video', {})
+        duration = video_info.get('duration', 0)
+        cover = video_info.get('cover', '') or video_info.get('originCover', '')
+        
+        # Get description
+        desc = item.get('desc', '')
+        
+        return {
+            'video_id': video_id,
+            'title': desc[:100] if desc else f'TikTok Video {video_id}',
+            'channel_name': author_id,
+            'channel_url': f'https://www.tiktok.com/@{author_id}',
+            'thumbnail_url': cover,
+            'video_url': f'https://www.tiktok.com/@{author_id}/video/{video_id}',
+            'view_count': view_count,
+            'like_count': like_count,
+            'comment_count': comment_count,
+            'share_count': share_count,
+            'duration': duration,
+            'platform': 'tiktok',
+        }
+    except Exception as e:
+        logger.debug(f"Failed to extract from API item: {e}")
         return None
 
 
