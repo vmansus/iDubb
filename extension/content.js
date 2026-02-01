@@ -455,11 +455,9 @@ function injectIntoTikTokMenu() {
 
 // Add iDubb option to TikTok's menu
 function addIdubbOptionToMenu(menuContainer) {
-  // 避免重复添加 - 检查整个页面
+  // 如果 iDubb 菜单已存在，直接返回不重新创建
   if (document.querySelector('.idubb-tiktok-option')) {
-    // 已存在则移除旧的再添加新的
-    document.querySelectorAll('.idubb-tiktok-option').forEach(el => el.remove());
-    document.querySelectorAll('.idubb-tiktok-divider').forEach(el => el.remove());
+    return;
   }
   
   // 找到菜单项列表
@@ -480,9 +478,9 @@ function addIdubbOptionToMenu(menuContainer) {
 
 // 创建 iDubb 菜单
 function createIdubbMenu(menuContainer) {
-  // 再次检查避免重复
+  // 再次检查避免重复 - 如果已存在则不重复创建
   if (document.querySelector('.idubb-tiktok-option')) {
-    document.querySelectorAll('.idubb-tiktok-option').forEach(el => el.remove());
+    return;
   }
   
   // 获取 TikTok 菜单的位置
