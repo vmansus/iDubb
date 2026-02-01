@@ -1,7 +1,46 @@
 /**
  * iDubb Browser Extension - Content Script
  * Runs on TikTok pages to detect videos and enable quick actions
+ * Uses saved settings from popup - NO HARDCODED DEFAULTS
  */
+
+// Global saved settings (loaded from storage)
+let savedSettings = null;
+
+// Load saved settings from storage
+async function loadSavedSettings() {
+  return new Promise((resolve) => {
+    chrome.storage.sync.get('settings', (data) => {
+      savedSettings = data.settings || {};
+      console.log('[iDubb] Loaded saved settings:', savedSettings);
+      resolve(savedSettings);
+    });
+  });
+}
+
+// Get default mode from saved settings
+function getDefaultMode() {
+  if (!savedSettings) return 'smart';
+  
+  // Map popup's processingMode to content script's mode names
+  const modeMap = {
+    'full_translation': 'full_translation',
+    'subtitles_only': 'subtitles_only',
+    'direct_transfer': 'direct_transfer',
+    'smart': 'smart'
+  };
+  return modeMap[savedSettings.processingMode] || 'smart';
+}
+
+// Get default platforms from saved settings
+function getDefaultPlatforms() {
+  if (!savedSettings) return { douyin: true, xiaohongshu: false };
+  
+  return {
+    douyin: savedSettings.uploadDouyin !== undefined ? savedSettings.uploadDouyin : true,
+    xiaohongshu: savedSettings.uploadXiaohongshu !== undefined ? savedSettings.uploadXiaohongshu : false
+  };
+}
 
 // Inject styles for iDubb menu
 const idubbStyles = document.createElement('style');
@@ -144,6 +183,10 @@ function addQuickActionButton() {
       return;
     }
 
+    // Get default values from saved settings
+    const defaultMode = getDefaultMode();
+    const defaultPlatforms = getDefaultPlatforms();
+
     // Create button
     const button = document.createElement('div');
     button.className = 'idubb-quick-action';
@@ -155,14 +198,14 @@ function addQuickActionButton() {
       </div>
       <div class="idubb-menu" style="display: none;">
         <div class="idubb-menu-section">处理模式</div>
-        <div class="idubb-menu-item" data-mode="full_translation">🎙️ 完整翻译</div>
-        <div class="idubb-menu-item" data-mode="subtitles_only">📝 仅字幕</div>
-        <div class="idubb-menu-item" data-mode="direct_transfer">📦 直接搬运</div>
-        <div class="idubb-menu-item" data-mode="smart">🤖 智能判断</div>
+        <div class="idubb-menu-item${defaultMode === 'full_translation' ? ' selected' : ''}" data-mode="full_translation">🎙️ 完整翻译</div>
+        <div class="idubb-menu-item${defaultMode === 'subtitles_only' ? ' selected' : ''}" data-mode="subtitles_only">📝 仅字幕</div>
+        <div class="idubb-menu-item${defaultMode === 'direct_transfer' ? ' selected' : ''}" data-mode="direct_transfer">📦 直接搬运</div>
+        <div class="idubb-menu-item${defaultMode === 'smart' ? ' selected' : ''}" data-mode="smart">🤖 智能判断</div>
         <div class="idubb-menu-divider"></div>
         <div class="idubb-menu-section">发布平台</div>
-        <div class="idubb-menu-item" data-action="douyin">📱 抖音</div>
-        <div class="idubb-menu-item" data-action="xiaohongshu">📕 小红书</div>
+        <div class="idubb-menu-item${defaultPlatforms.douyin ? ' selected' : ''}" data-action="douyin">📱 抖音</div>
+        <div class="idubb-menu-item${defaultPlatforms.xiaohongshu ? ' selected' : ''}" data-action="xiaohongshu">📕 小红书</div>
         <div class="idubb-menu-item idubb-menu-submit" data-action="submit">🚀 开始处理</div>
       </div>
     `;
@@ -203,9 +246,9 @@ function addQuickActionButton() {
       menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
     });
 
-    // Track selected options
-    let selectedMode = 'smart'; // 默认智能判断
-    let selectedPlatforms = { douyin: true, xiaohongshu: false }; // 默认抖音
+    // Track selected options (initialized from saved settings)
+    let selectedMode = defaultMode;
+    let selectedPlatforms = { ...defaultPlatforms };
 
     // Handle menu item clicks
     button.querySelectorAll('.idubb-menu-item').forEach(menuItem => {
@@ -246,8 +289,9 @@ function addQuickActionButton() {
             return;
           }
           
-          // 根据处理模式设置选项
+          // Build options from saved settings + current selections
           const options = {
+            ...savedSettings,  // Include all saved settings
             uploadDouyin: selectedPlatforms.douyin,
             uploadXiaohongshu: selectedPlatforms.xiaohongshu,
             processingMode: selectedMode
@@ -300,10 +344,6 @@ function addQuickActionButton() {
         }
       });
     });
-    
-    // 初始化默认选中状态
-    button.querySelector('[data-mode="smart"]')?.classList.add('selected');
-    button.querySelector('[data-action="douyin"]')?.classList.add('selected');
 
     item.appendChild(button);
   });
@@ -393,11 +433,12 @@ function addIdubbOptionToMenu(menuContainer) {
   const lastItem = menuItems[menuItems.length - 1];
   if (!lastItem) return;
   
-  // 不再需要分割线
-  const divider = null;
-  
   // 获取 TikTok 菜单的位置，把 iDubb 菜单放在旁边
   const menuRect = menuContainer.getBoundingClientRect();
+  
+  // Get default values from saved settings
+  const defaultMode = getDefaultMode();
+  const defaultPlatforms = getDefaultPlatforms();
   
   // 创建我们的菜单项容器 - 独立定位在旁边
   const idubbContainer = document.createElement('div');
@@ -419,30 +460,35 @@ function addIdubbOptionToMenu(menuContainer) {
     idubbContainer.style.left = 'auto';
     idubbContainer.style.right = `${window.innerWidth - menuRect.left + 10}px`;
   }
+  
+  // Build HTML with correct default selections
+  const modes = [
+    { id: 'full_translation', icon: '🎙️', label: '完整翻译' },
+    { id: 'subtitles_only', icon: '📝', label: '仅字幕' },
+    { id: 'direct_transfer', icon: '📦', label: '直接搬运' },
+    { id: 'smart', icon: '🤖', label: '智能判断' }
+  ];
+  
+  const modeButtonsHtml = modes.map(m => {
+    const isSelected = m.id === defaultMode;
+    return `<button class="idubb-tiktok-btn idubb-mode-btn${isSelected ? ' selected' : ''}" data-mode="${m.id}" style="display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 16px; background: ${isSelected ? 'rgba(254,44,85,0.2)' : 'none'}; border: none; color: white; cursor: pointer; font-size: 13px; text-align: left;">
+      <span>${m.icon}</span> ${m.label}${isSelected ? ' ✓' : ''}
+    </button>`;
+  }).join('');
+  
   idubbContainer.innerHTML = `
     <div class="idubb-menu-header" style="padding: 8px 16px; color: #fe2c55; font-weight: bold; font-size: 12px;">
       🚀 iDubb 一键发布
     </div>
     <div style="padding: 4px 16px; color: #888; font-size: 11px;">处理模式</div>
-    <button class="idubb-tiktok-btn idubb-mode-btn" data-mode="full_translation" style="display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 16px; background: none; border: none; color: white; cursor: pointer; font-size: 13px; text-align: left;">
-      <span>🎙️</span> 完整翻译
-    </button>
-    <button class="idubb-tiktok-btn idubb-mode-btn" data-mode="subtitles_only" style="display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 16px; background: none; border: none; color: white; cursor: pointer; font-size: 13px; text-align: left;">
-      <span>📝</span> 仅字幕
-    </button>
-    <button class="idubb-tiktok-btn idubb-mode-btn" data-mode="direct_transfer" style="display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 16px; background: none; border: none; color: white; cursor: pointer; font-size: 13px; text-align: left;">
-      <span>📦</span> 直接搬运
-    </button>
-    <button class="idubb-tiktok-btn idubb-mode-btn selected" data-mode="smart" style="display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 16px; background: rgba(254,44,85,0.2); border: none; color: white; cursor: pointer; font-size: 13px; text-align: left;">
-      <span>🤖</span> 智能判断 ✓
-    </button>
+    ${modeButtonsHtml}
     <div style="height: 1px; background: rgba(255,255,255,0.1); margin: 8px 0;"></div>
     <div style="padding: 4px 16px; color: #888; font-size: 11px;">发布平台</div>
-    <button class="idubb-tiktok-btn idubb-platform-btn selected" data-platform="douyin" style="display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 16px; background: rgba(254,44,85,0.2); border: none; color: white; cursor: pointer; font-size: 13px; text-align: left;">
-      <span>📱</span> 抖音 ✓
+    <button class="idubb-tiktok-btn idubb-platform-btn${defaultPlatforms.douyin ? ' selected' : ''}" data-platform="douyin" style="display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 16px; background: ${defaultPlatforms.douyin ? 'rgba(254,44,85,0.2)' : 'none'}; border: none; color: white; cursor: pointer; font-size: 13px; text-align: left;">
+      <span>📱</span> 抖音${defaultPlatforms.douyin ? ' ✓' : ''}
     </button>
-    <button class="idubb-tiktok-btn idubb-platform-btn" data-platform="xiaohongshu" style="display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 16px; background: none; border: none; color: white; cursor: pointer; font-size: 13px; text-align: left;">
-      <span>📕</span> 小红书
+    <button class="idubb-tiktok-btn idubb-platform-btn${defaultPlatforms.xiaohongshu ? ' selected' : ''}" data-platform="xiaohongshu" style="display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 16px; background: ${defaultPlatforms.xiaohongshu ? 'rgba(254,44,85,0.2)' : 'none'}; border: none; color: white; cursor: pointer; font-size: 13px; text-align: left;">
+      <span>📕</span> 小红书${defaultPlatforms.xiaohongshu ? ' ✓' : ''}
     </button>
     <div style="height: 1px; background: rgba(255,255,255,0.1); margin: 8px 0;"></div>
     <button class="idubb-tiktok-btn idubb-submit-btn" data-action="submit" style="display: flex; align-items: center; justify-content: center; gap: 8px; width: calc(100% - 16px); margin: 8px; padding: 12px 16px; background: #fe2c55; border: none; border-radius: 4px; color: white; cursor: pointer; font-size: 14px; font-weight: bold;">
@@ -450,10 +496,10 @@ function addIdubbOptionToMenu(menuContainer) {
     </button>
   `;
   
-  // 状态追踪
+  // 状态追踪 (initialized from saved settings)
   let tiktokMenuState = {
-    mode: 'smart',
-    platforms: { douyin: true, xiaohongshu: false }
+    mode: defaultMode,
+    platforms: { ...defaultPlatforms }
   };
 
   // 添加 hover 效果
@@ -515,7 +561,9 @@ function addIdubbOptionToMenu(menuContainer) {
           return;
         }
         
+        // Build options from saved settings + current selections
         const options = {
+          ...savedSettings,  // Include all saved settings
           uploadDouyin: tiktokMenuState.platforms.douyin,
           uploadXiaohongshu: tiktokMenuState.platforms.xiaohongshu,
           processingMode: tiktokMenuState.mode
@@ -593,7 +641,10 @@ function addIdubbOptionToMenu(menuContainer) {
 }
 
 // Initialize
-function init() {
+async function init() {
+  // Load saved settings first
+  await loadSavedSettings();
+  
   // Add buttons to existing videos
   addQuickActionButton();
   
