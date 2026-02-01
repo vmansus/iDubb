@@ -455,10 +455,8 @@ function injectIntoTikTokMenu() {
 
 // Add iDubb option to TikTok's menu
 function addIdubbOptionToMenu(menuContainer) {
-  // 如果 iDubb 菜单已存在，直接返回不重新创建
-  if (document.querySelector('.idubb-tiktok-option')) {
-    return;
-  }
+  // 删除旧的菜单
+  document.querySelectorAll('.idubb-tiktok-option').forEach(el => el.remove());
   
   // 找到菜单项列表
   const menuItems = menuContainer.querySelectorAll('button, [role="button"], [class*="MenuItem"], [class*="Item"]');
@@ -478,10 +476,13 @@ function addIdubbOptionToMenu(menuContainer) {
 
 // 创建 iDubb 菜单
 function createIdubbMenu(menuContainer) {
-  // 再次检查避免重复 - 如果已存在则不重复创建
-  if (document.querySelector('.idubb-tiktok-option')) {
+  // 检查 TikTok 菜单是否还存在
+  if (!document.body.contains(menuContainer)) {
     return;
   }
+  
+  // 删除可能存在的旧菜单
+  document.querySelectorAll('.idubb-tiktok-option').forEach(el => el.remove());
   
   // 获取 TikTok 菜单的位置
   const menuRect = menuContainer.getBoundingClientRect();
