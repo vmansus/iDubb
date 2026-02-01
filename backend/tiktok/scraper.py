@@ -228,6 +228,8 @@ async def extract_video_data(element) -> Optional[Dict[str, Any]]:
 
 def extract_video_from_api_item(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Extract video data from TikTok API response item"""
+    from datetime import datetime
+    
     try:
         video_id = str(item.get('id', ''))
         if not video_id:
@@ -249,6 +251,15 @@ def extract_video_from_api_item(item: Dict[str, Any]) -> Optional[Dict[str, Any]
         # Get description
         desc = item.get('desc', '')
         
+        # Get publish time (createTime is Unix timestamp)
+        create_time = item.get('createTime', 0)
+        published_at = None
+        if create_time:
+            try:
+                published_at = datetime.fromtimestamp(int(create_time)).isoformat()
+            except (ValueError, TypeError):
+                pass
+        
         return {
             'video_id': video_id,
             'title': desc[:100] if desc else f'TikTok Video {video_id}',
@@ -259,6 +270,7 @@ def extract_video_from_api_item(item: Dict[str, Any]) -> Optional[Dict[str, Any]
             'view_count': view_count,
             'duration': duration,
             'platform': 'tiktok',
+            'published_at': published_at,
         }
     except Exception as e:
         logger.debug(f"Failed to extract from API item: {e}")
