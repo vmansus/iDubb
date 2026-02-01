@@ -882,14 +882,38 @@ export default function TaskDetail() {
                             {stepName === 'transcribe' && (
                               (isFinished || isFailed || isPaused) ? (
                                 taskOptions.options.use_ocr ? (
-                                  /* OCR mode - show OCR engine and frame interval */
+                                  /* OCR mode - editable OCR engine and frame interval */
                                   <>
-                                    <span className="px-2 py-0.5 bg-amber-500 text-white rounded text-xs font-medium">
-                                      🔍 {String(taskOptions.options.ocr_engine || 'paddleocr')}
-                                    </span>
-                                    <span className="px-2 py-0.5 bg-slate-600 text-white rounded text-xs">
-                                      {String(taskOptions.options.ocr_frame_interval || 0.5)}s 间隔
-                                    </span>
+                                    <select
+                                      value={String(editedOptions.ocr_engine ?? taskOptions.options.ocr_engine ?? 'paddleocr')}
+                                      onChange={(e) => {
+                                        const newOpts = { ...editedOptions, ocr_engine: e.target.value }
+                                        setEditedOptions(newOpts)
+                                        updateOptionsMutation.mutate(newOpts)
+                                      }}
+                                      disabled={updateOptionsMutation.isPending}
+                                      className="px-2 py-0.5 bg-amber-500 text-white border border-amber-600 rounded text-xs font-medium"
+                                    >
+                                      <option value="paddleocr">🔍 PaddleOCR</option>
+                                      <option value="openai">🔍 OpenAI</option>
+                                      <option value="anthropic">🔍 Anthropic</option>
+                                    </select>
+                                    <select
+                                      value={String(editedOptions.ocr_frame_interval ?? taskOptions.options.ocr_frame_interval ?? 0.5)}
+                                      onChange={(e) => {
+                                        const newOpts = { ...editedOptions, ocr_frame_interval: parseFloat(e.target.value) }
+                                        setEditedOptions(newOpts)
+                                        updateOptionsMutation.mutate(newOpts)
+                                      }}
+                                      disabled={updateOptionsMutation.isPending}
+                                      className="px-2 py-0.5 bg-white border border-gray-300 rounded text-xs"
+                                    >
+                                      <option value="0.5">0.5s 间隔</option>
+                                      <option value="1">1s 间隔</option>
+                                      <option value="2">2s 间隔</option>
+                                      <option value="3">3s 间隔</option>
+                                      <option value="5">5s 间隔</option>
+                                    </select>
                                   </>
                                 ) : (
                                 <>
