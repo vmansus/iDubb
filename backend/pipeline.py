@@ -311,6 +311,48 @@ class ProcessingTask:
         
         self._active_processes.clear()
 
+    async def run_subprocess(self, cmd: List[str], timeout: float = None, check: bool = False) -> tuple:
+        """
+        Run a subprocess with cancellation support.
+        
+        Args:
+            cmd: Command and arguments
+            timeout: Optional timeout in seconds
+            check: If True, raise exception on non-zero return code
+            
+        Returns:
+            Tuple of (returncode, stdout, stderr)
+        """
+        if self._cancel_requested:
+            raise Exception("用户手动停止")
+        
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        self._active_processes.add(proc)
+        
+        try:
+            if timeout:
+                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+            else:
+                stdout, stderr = await proc.communicate()
+            
+            stdout_str = stdout.decode() if stdout else ""
+            stderr_str = stderr.decode() if stderr else ""
+            
+            if check and proc.returncode != 0:
+                raise Exception(f"Command failed with code {proc.returncode}: {stderr_str}")
+            
+            return proc.returncode, stdout_str, stderr_str
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            raise Exception(f"Command timed out after {timeout}s")
+        finally:
+            self._active_processes.discard(proc)
+
     def __post_init__(self):
         """Initialize step tracking"""
         step_names = [
@@ -1086,17 +1128,17 @@ class VideoPipeline:
             await self._update_task(task, TaskStatus.DOWNLOADING, 10, "提取音频...")
             audio_path = task_dir / "audio.mp3"
             try:
-                result = subprocess.run(
-                    ["ffmpeg", "-i", str(new_video_path), "-vn", "-acodec", "libmp3lame", "-q:a", "2", "-y", str(audio_path)],
-                    capture_output=True,
-                    text=True
+                returncode, stdout, stderr = await task.run_subprocess(
+                    ["ffmpeg", "-i", str(new_video_path), "-vn", "-acodec", "libmp3lame", "-q:a", "2", "-y", str(audio_path)]
                 )
-                if result.returncode == 0 and audio_path.exists():
+                if returncode == 0 and audio_path.exists():
                     task.audio_path = audio_path
                     logger.info(f"Extracted audio to: {audio_path}")
                 else:
-                    logger.warning(f"Failed to extract audio: {result.stderr}")
+                    logger.warning(f"Failed to extract audio: {stderr}")
             except Exception as e:
+                if "用户手动停止" in str(e):
+                    raise
                 logger.warning(f"Failed to extract audio: {e}")
         else:
             logger.info("Skipping audio extraction: transfer-only mode (no subtitles or TTS)")
@@ -2882,6 +2924,9 @@ class VideoPipeline:
         self.tasks[task.task_id] = task
         # Record processing start time
         task.processing_started_at = datetime.now()
+        
+        # Set cancel_check on processors so they can be interrupted
+        self.video_processor.set_cancel_check(task.is_cancelled)
 
         try:
             # Run video processing steps in sequence

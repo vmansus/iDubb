@@ -5,7 +5,7 @@ import asyncio
 import subprocess
 from enum import Enum
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Callable, Tuple
 from dataclasses import dataclass, field
 from loguru import logger
 
@@ -89,8 +89,56 @@ class ProcessResult:
 class VideoProcessor:
     """Video processing utilities using FFmpeg"""
 
-    def __init__(self):
+    def __init__(self, cancel_check: Optional[Callable[[], bool]] = None):
         self._check_ffmpeg()
+        self._cancel_check = cancel_check
+        self._active_processes: List[asyncio.subprocess.Process] = []
+
+    def set_cancel_check(self, cancel_check: Optional[Callable[[], bool]]):
+        """Set the cancellation check callback"""
+        self._cancel_check = cancel_check
+
+    def _check_cancelled(self):
+        """Check if cancellation was requested"""
+        if self._cancel_check and self._cancel_check():
+            self._kill_active_processes()
+            raise Exception("用户手动停止")
+
+    def _kill_active_processes(self):
+        """Kill all active subprocesses"""
+        for proc in self._active_processes:
+            try:
+                if proc.returncode is None:
+                    proc.kill()
+                    logger.info(f"Killed video processor subprocess {proc.pid}")
+            except Exception as e:
+                logger.warning(f"Failed to kill process: {e}")
+        self._active_processes.clear()
+
+    async def _run_subprocess(self, cmd: List[str], timeout: float = None) -> Tuple[int, str, str]:
+        """Run subprocess with cancellation support"""
+        self._check_cancelled()
+        
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        self._active_processes.append(proc)
+        
+        try:
+            if timeout:
+                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+            else:
+                stdout, stderr = await proc.communicate()
+            return proc.returncode, stdout.decode() if stdout else "", stderr.decode() if stderr else ""
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            raise Exception(f"Command timed out after {timeout}s")
+        finally:
+            if proc in self._active_processes:
+                self._active_processes.remove(proc)
 
     def _check_ffmpeg(self):
         """Check if FFmpeg is available"""
@@ -168,22 +216,20 @@ class VideoProcessor:
                 str(output_path)
             ]
 
-            def run_extract():
-                return subprocess.run(cmd, capture_output=True, text=True)
+            returncode, stdout, stderr = await self._run_subprocess(cmd)
 
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(None, run_extract)
-
-            if result.returncode != 0:
+            if returncode != 0:
                 return ProcessResult(
                     success=False,
                     output_path=None,
-                    error=result.stderr
+                    error=stderr
                 )
 
             return ProcessResult(success=True, output_path=output_path)
 
         except Exception as e:
+            if "用户手动停止" in str(e):
+                raise
             logger.error(f"Audio extraction failed: {e}")
             return ProcessResult(success=False, output_path=None, error=str(e))
 
@@ -225,23 +271,21 @@ class VideoProcessor:
                     str(output_path)
                 ]
 
-            def run_merge():
-                return subprocess.run(cmd, capture_output=True, text=True)
+            returncode, stdout, stderr = await self._run_subprocess(cmd)
 
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(None, run_merge)
-
-            if result.returncode != 0:
+            if returncode != 0:
                 return ProcessResult(
                     success=False,
                     output_path=None,
-                    error=result.stderr
+                    error=stderr
                 )
 
             logger.info(f"Merged audio/video: {output_path}")
             return ProcessResult(success=True, output_path=output_path)
 
         except Exception as e:
+            if "用户手动停止" in str(e):
+                raise
             logger.error(f"Audio/video merge failed: {e}")
             return ProcessResult(success=False, output_path=None, error=str(e))
 
@@ -270,22 +314,20 @@ class VideoProcessor:
                 str(output_path)
             ]
 
-            def run_resize():
-                return subprocess.run(cmd, capture_output=True, text=True)
+            returncode, stdout, stderr = await self._run_subprocess(cmd)
 
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(None, run_resize)
-
-            if result.returncode != 0:
+            if returncode != 0:
                 return ProcessResult(
                     success=False,
                     output_path=None,
-                    error=result.stderr
+                    error=stderr
                 )
 
             return ProcessResult(success=True, output_path=output_path)
 
         except Exception as e:
+            if "用户手动停止" in str(e):
+                raise
             logger.error(f"Video resize failed: {e}")
             return ProcessResult(success=False, output_path=None, error=str(e))
 
@@ -344,23 +386,21 @@ class VideoProcessor:
                 str(output_path)
             ]
 
-            def run_convert():
-                return subprocess.run(cmd, capture_output=True, text=True)
+            returncode, stdout, stderr = await self._run_subprocess(cmd)
 
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(None, run_convert)
-
-            if result.returncode != 0:
+            if returncode != 0:
                 return ProcessResult(
                     success=False,
                     output_path=None,
-                    error=result.stderr
+                    error=stderr
                 )
 
             logger.info(f"Converted video for {platform}: {output_path}")
             return ProcessResult(success=True, output_path=output_path)
 
         except Exception as e:
+            if "用户手动停止" in str(e):
+                raise
             logger.error(f"Platform conversion failed: {e}")
             return ProcessResult(success=False, output_path=None, error=str(e))
 
@@ -403,24 +443,23 @@ class VideoProcessor:
                 str(output_path)
             ]
 
-            def run_concat():
-                result = subprocess.run(cmd, capture_output=True, text=True)
+            try:
+                returncode, stdout, stderr = await self._run_subprocess(cmd)
+            finally:
                 # Clean up concat file
                 concat_file.unlink(missing_ok=True)
-                return result
 
-            loop = asyncio.get_event_loop()
-            result = await loop.run_in_executor(None, run_concat)
-
-            if result.returncode != 0:
+            if returncode != 0:
                 return ProcessResult(
                     success=False,
                     output_path=None,
-                    error=result.stderr
+                    error=stderr
                 )
 
             return ProcessResult(success=True, output_path=output_path)
 
         except Exception as e:
+            if "用户手动停止" in str(e):
+                raise
             logger.error(f"Audio concatenation failed: {e}")
             return ProcessResult(success=False, output_path=None, error=str(e))

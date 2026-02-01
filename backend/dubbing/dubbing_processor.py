@@ -91,6 +91,47 @@ class DubbingProcessor:
 
     def __init__(self, tts_engine: BaseTTSEngine):
         self.tts_engine = tts_engine
+        self._active_processes: List[asyncio.subprocess.Process] = []
+        self._cancel_check: Optional[Callable[[], bool]] = None
+
+    def _check_cancelled(self):
+        """Check if cancellation was requested"""
+        if self._cancel_check and self._cancel_check():
+            self._kill_active_processes()
+            raise Exception("用户手动停止")
+
+    def _kill_active_processes(self):
+        """Kill all active subprocesses"""
+        for proc in self._active_processes:
+            try:
+                if proc.returncode is None:
+                    proc.kill()
+                    logger.info(f"Killed dubbing subprocess {proc.pid}")
+            except Exception as e:
+                logger.warning(f"Failed to kill process: {e}")
+        self._active_processes.clear()
+
+    async def _run_subprocess(self, cmd: List[str], timeout: float = 60) -> Tuple[int, str, str]:
+        """Run subprocess with cancellation support"""
+        self._check_cancelled()
+        
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        self._active_processes.append(proc)
+        
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+            return proc.returncode, stdout.decode() if stdout else "", stderr.decode() if stderr else ""
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            raise
+        finally:
+            if proc in self._active_processes:
+                self._active_processes.remove(proc)
 
     def _should_skip_text(self, text: str) -> bool:
         """Check if text should be skipped (music, sound effects, etc.)"""
@@ -139,6 +180,9 @@ class DubbingProcessor:
         """
         if not segments:
             return DubbingResult(success=False, error="No segments provided")
+
+        # Store cancel check for use in subprocess methods
+        self._cancel_check = cancel_check
 
         # Check for cancellation before starting
         if cancel_check and cancel_check():
@@ -390,12 +434,7 @@ class DubbingProcessor:
             str(output_path)
         ]
 
-        process = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-        await process.communicate()
+        await self._run_subprocess(cmd, timeout=60)
 
     async def _merge_audio(
         self,
@@ -460,15 +499,10 @@ class DubbingProcessor:
             str(output_path)
         ]
 
-        process = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-        stdout, stderr = await process.communicate()
+        returncode, stdout, stderr = await self._run_subprocess(cmd, timeout=120)
 
-        if process.returncode != 0:
-            logger.error(f"FFmpeg merge failed: {stderr.decode()}")
+        if returncode != 0:
+            logger.error(f"FFmpeg merge failed: {stderr}")
             raise Exception("Audio merge failed")
 
         # Get final duration
@@ -489,12 +523,7 @@ class DubbingProcessor:
             str(output_path)
         ]
 
-        process = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-        await process.communicate()
+        await self._run_subprocess(cmd, timeout=30)
 
     async def _get_audio_duration(self, audio_path: Path) -> float:
         """Get audio duration using FFprobe"""
@@ -506,15 +535,10 @@ class DubbingProcessor:
             str(audio_path)
         ]
 
-        process = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
-        stdout, _ = await process.communicate()
+        returncode, stdout, stderr = await self._run_subprocess(cmd, timeout=10)
 
         try:
-            return float(stdout.decode().strip())
+            return float(stdout.strip())
         except Exception:
             return 0.0
 
