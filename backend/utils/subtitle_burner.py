@@ -372,11 +372,26 @@ class SubtitleBurner:
                     time_str = time_str[1:]
                 return time_str
 
+            # Determine PlayRes based on video aspect ratio
+            # For vertical videos, use PlayRes that matches frontend preview container
+            # Frontend vertical preview: max-w-200px with 9:16 aspect = 355.5px height
+            # Frontend horizontal preview: typically ~288px height (close to ASS default)
+            # This ensures margin_v scaling matches frontend: actual = margin_v * (video_height / PlayResY)
+            is_vertical = video_height > video_width if video_width > 0 and video_height > 0 else False
+            if is_vertical:
+                # Vertical video: preview container is 200px wide * 16/9 = 355.5px tall
+                play_res_y = 355.5
+                play_res_x = 200.0
+                logger.info(f"[ASS] Vertical video detected, using PlayRes {play_res_x}x{play_res_y} to match frontend preview")
+            else:
+                # Horizontal video: use ASS default (close to typical preview height)
+                play_res_y = 288
+                play_res_x = 384
+            
             # Calculate horizontal margin based on max_width
-            DEFAULT_PLAY_RES_X = 384
             max_width_pct = getattr(style, 'max_width', 90)
             if max_width_pct < 100:
-                margin_h = int(DEFAULT_PLAY_RES_X * (100 - max_width_pct) / 2 / 100)
+                margin_h = int(play_res_x * (100 - max_width_pct) / 2 / 100)
                 margin_h = max(margin_h, style.margin_h)
             else:
                 margin_h = style.margin_h
@@ -393,13 +408,15 @@ class SubtitleBurner:
                 actual_outline_color = style.outline_color
                 actual_shadow = style.shadow
 
-            # Build ASS header
+            # Build ASS header (PlayRes already calculated above)
             ass_content = f"""[Script Info]
 Title: Styled Subtitle
 ScriptType: v4.00+
 WrapStyle: 0
 Collisions: Normal
 PlayDepth: 0
+PlayResX: {int(play_res_x)}
+PlayResY: {int(play_res_y)}
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
