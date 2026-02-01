@@ -343,7 +343,7 @@ function MetadataPresetsSection() {
 export default function Settings() {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
-  const [activeTab, setActiveTab] = useState<'general' | 'video' | 'translation' | 'ai' | 'publish' | 'platforms' | 'youtube'>('general')
+  const [activeTab, setActiveTab] = useState<'general' | 'video' | 'translation' | 'ai' | 'publish' | 'platforms' | 'youtube' | 'tiktok'>('general')
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({})
   const [credentials, setCredentials] = useState<Record<string, Record<string, string>>>({
     bilibili: {},
@@ -578,6 +578,7 @@ export default function Settings() {
           { id: 'publish', icon: null, label: 'settings.tabs.publish' },
           { id: 'platforms', icon: null, label: 'settings.tabs.platforms' },
           { id: 'youtube', icon: Youtube, label: 'settings.tabs.youtube' },
+          { id: 'tiktok', icon: Sparkles, label: 'TikTok' },
         ].map(({ id, icon: Icon, label }) => (
           <button
             key={id}
@@ -2224,163 +2225,6 @@ export default function Settings() {
             </div>
           </div>
 
-          {/* TikTok Discovery Settings */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h3 className="text-lg font-medium text-gray-900">TikTok 发现</h3>
-                <p className="text-sm text-gray-500 mt-1">配置 TikTok 热门视频发现功能</p>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={localSettings?.tiktok?.enabled ?? false}
-                  onChange={(e) => handleSettingChange('tiktok', 'enabled', e.target.checked)}
-                  className="sr-only peer"
-                />
-                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-              </label>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  地区
-                </label>
-                <select
-                  value={localSettings?.tiktok?.region_code ?? 'US'}
-                  onChange={(e) => handleSettingChange('tiktok', 'region_code', e.target.value)}
-                  className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
-                  disabled={!localSettings?.tiktok?.enabled}
-                >
-                  <option value="US">美国</option>
-                  <option value="CN">中国</option>
-                  <option value="JP">日本</option>
-                  <option value="KR">韩国</option>
-                  <option value="UK">英国</option>
-                  <option value="DE">德国</option>
-                  <option value="FR">法国</option>
-                  <option value="TW">台湾</option>
-                  <option value="HK">香港</option>
-                  <option value="SG">新加坡</option>
-                  <option value="TH">泰国</option>
-                  <option value="VN">越南</option>
-                  <option value="ID">印尼</option>
-                  <option value="PH">菲律宾</option>
-                  <option value="MY">马来西亚</option>
-                  <option value="BR">巴西</option>
-                  <option value="IN">印度</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  更新间隔（分钟）
-                </label>
-                <input
-                  type="number"
-                  value={localSettings?.tiktok?.update_interval ?? 60}
-                  onChange={(e) => handleSettingChange('tiktok', 'update_interval', parseInt(e.target.value))}
-                  min={15}
-                  max={1440}
-                  className="w-24 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
-                  disabled={!localSettings?.tiktok?.enabled}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  启用的标签
-                </label>
-                <div className="flex flex-wrap gap-2">
-                  {['trending', 'fyp', 'viral', 'foryou', 'comedy', 'dance', 'music', 'food', 'travel', 'tech', 'gaming', 'fitness'].map(tag => (
-                    <label key={tag} className="inline-flex items-center">
-                      <input
-                        type="checkbox"
-                        checked={(localSettings?.tiktok?.enabled_tags ?? ['trending', 'fyp', 'viral']).includes(tag)}
-                        onChange={(e) => {
-                          const current = localSettings?.tiktok?.enabled_tags ?? ['trending', 'fyp', 'viral']
-                          const updated = e.target.checked
-                            ? [...current, tag]
-                            : current.filter((t: string) => t !== tag)
-                          handleSettingChange('tiktok', 'enabled_tags', updated)
-                        }}
-                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                        disabled={!localSettings?.tiktok?.enabled}
-                      />
-                      <span className="ml-1 text-sm text-gray-700">#{tag}</span>
-                    </label>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  每个标签最大视频数
-                </label>
-                <input
-                  type="number"
-                  value={localSettings?.tiktok?.max_videos_per_tag ?? 20}
-                  onChange={(e) => handleSettingChange('tiktok', 'max_videos_per_tag', parseInt(e.target.value))}
-                  min={5}
-                  max={50}
-                  className="w-24 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
-                  disabled={!localSettings?.tiktok?.enabled}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  最小播放量
-                </label>
-                <input
-                  type="number"
-                  value={localSettings?.tiktok?.min_view_count ?? 10000}
-                  onChange={(e) => handleSettingChange('tiktok', 'min_view_count', parseInt(e.target.value))}
-                  min={0}
-                  max={10000000}
-                  step={1000}
-                  className="w-32 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
-                  disabled={!localSettings?.tiktok?.enabled}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  最小点赞数
-                </label>
-                <input
-                  type="number"
-                  value={localSettings?.tiktok?.min_like_count ?? 1000}
-                  onChange={(e) => handleSettingChange('tiktok', 'min_like_count', parseInt(e.target.value))}
-                  min={0}
-                  max={10000000}
-                  step={100}
-                  className="w-32 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
-                  disabled={!localSettings?.tiktok?.enabled}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  最大时长（秒）
-                </label>
-                <select
-                  value={localSettings?.tiktok?.max_duration ?? 180}
-                  onChange={(e) => handleSettingChange('tiktok', 'max_duration', parseInt(e.target.value))}
-                  className="w-48 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
-                  disabled={!localSettings?.tiktok?.enabled}
-                >
-                  <option value={60}>1 分钟</option>
-                  <option value={180}>3 分钟</option>
-                  <option value={300}>5 分钟</option>
-                  <option value={600}>10 分钟</option>
-                  <option value={0}>不限制</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
           {/* Cookie Status */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
             <div className="flex items-center justify-between mb-4">
@@ -2608,6 +2452,188 @@ export default function Settings() {
               <p className="mt-3 text-xs text-gray-500">
                 {t('settings.youtube.cookieExpireNote')}
               </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TikTok Tab */}
+      {activeTab === 'tiktok' && (
+        <div className="space-y-6">
+          {/* TikTok Discovery Settings */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-lg font-medium text-gray-900">TikTok 热门视频发现</h3>
+                <p className="text-sm text-gray-500 mt-1">配置 TikTok 热门视频发现和筛选功能</p>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={localSettings?.tiktok?.enabled ?? false}
+                  onChange={(e) => handleSettingChange('tiktok', 'enabled', e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+              </label>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  地区
+                </label>
+                <select
+                  value={localSettings?.tiktok?.region_code ?? 'US'}
+                  onChange={(e) => handleSettingChange('tiktok', 'region_code', e.target.value)}
+                  className="w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                  disabled={!localSettings?.tiktok?.enabled}
+                >
+                  <option value="US">美国</option>
+                  <option value="CN">中国</option>
+                  <option value="JP">日本</option>
+                  <option value="KR">韩国</option>
+                  <option value="UK">英国</option>
+                  <option value="DE">德国</option>
+                  <option value="FR">法国</option>
+                  <option value="TW">台湾</option>
+                  <option value="HK">香港</option>
+                  <option value="SG">新加坡</option>
+                  <option value="TH">泰国</option>
+                  <option value="VN">越南</option>
+                  <option value="ID">印尼</option>
+                  <option value="PH">菲律宾</option>
+                  <option value="MY">马来西亚</option>
+                  <option value="BR">巴西</option>
+                  <option value="IN">印度</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  更新间隔（分钟）
+                </label>
+                <input
+                  type="number"
+                  value={localSettings?.tiktok?.update_interval ?? 60}
+                  onChange={(e) => handleSettingChange('tiktok', 'update_interval', parseInt(e.target.value))}
+                  min={15}
+                  max={1440}
+                  className="w-24 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                  disabled={!localSettings?.tiktok?.enabled}
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  启用的标签
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {['trending', 'fyp', 'viral', 'foryou', 'comedy', 'dance', 'music', 'food', 'travel', 'tech', 'gaming', 'fitness'].map(tag => (
+                    <label key={tag} className="inline-flex items-center">
+                      <input
+                        type="checkbox"
+                        checked={(localSettings?.tiktok?.enabled_tags ?? ['trending', 'fyp', 'viral']).includes(tag)}
+                        onChange={(e) => {
+                          const current = localSettings?.tiktok?.enabled_tags ?? ['trending', 'fyp', 'viral']
+                          const updated = e.target.checked
+                            ? [...current, tag]
+                            : current.filter((t: string) => t !== tag)
+                          handleSettingChange('tiktok', 'enabled_tags', updated)
+                        }}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        disabled={!localSettings?.tiktok?.enabled}
+                      />
+                      <span className="ml-1 text-sm text-gray-700">#{tag}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  每个标签最大视频数
+                </label>
+                <input
+                  type="number"
+                  value={localSettings?.tiktok?.max_videos_per_tag ?? 20}
+                  onChange={(e) => handleSettingChange('tiktok', 'max_videos_per_tag', parseInt(e.target.value))}
+                  min={5}
+                  max={50}
+                  className="w-24 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                  disabled={!localSettings?.tiktok?.enabled}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  最大发布时间（天）
+                </label>
+                <select
+                  value={localSettings?.tiktok?.max_publish_age ?? 7}
+                  onChange={(e) => handleSettingChange('tiktok', 'max_publish_age', parseInt(e.target.value))}
+                  className="w-48 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                  disabled={!localSettings?.tiktok?.enabled}
+                >
+                  <option value={1}>1 天内</option>
+                  <option value={3}>3 天内</option>
+                  <option value={7}>7 天内</option>
+                  <option value={14}>14 天内</option>
+                  <option value={30}>30 天内</option>
+                  <option value={0}>不限制</option>
+                </select>
+                <p className="text-xs text-gray-500 mt-1">只显示指定天数内发布的视频</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  最小播放量
+                </label>
+                <input
+                  type="number"
+                  value={localSettings?.tiktok?.min_view_count ?? 10000}
+                  onChange={(e) => handleSettingChange('tiktok', 'min_view_count', parseInt(e.target.value))}
+                  min={0}
+                  max={10000000}
+                  step={1000}
+                  className="w-32 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                  disabled={!localSettings?.tiktok?.enabled}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  最小点赞数
+                </label>
+                <input
+                  type="number"
+                  value={localSettings?.tiktok?.min_like_count ?? 1000}
+                  onChange={(e) => handleSettingChange('tiktok', 'min_like_count', parseInt(e.target.value))}
+                  min={0}
+                  max={10000000}
+                  step={100}
+                  className="w-32 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                  disabled={!localSettings?.tiktok?.enabled}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  最大时长
+                </label>
+                <select
+                  value={localSettings?.tiktok?.max_duration ?? 180}
+                  onChange={(e) => handleSettingChange('tiktok', 'max_duration', parseInt(e.target.value))}
+                  className="w-48 rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm"
+                  disabled={!localSettings?.tiktok?.enabled}
+                >
+                  <option value={60}>1 分钟</option>
+                  <option value={180}>3 分钟</option>
+                  <option value={300}>5 分钟</option>
+                  <option value={600}>10 分钟</option>
+                  <option value={0}>不限制</option>
+                </select>
+              </div>
             </div>
           </div>
         </div>

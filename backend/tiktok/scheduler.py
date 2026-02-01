@@ -59,6 +59,7 @@ class TikTokScheduler:
         self._min_view_count = 10000
         self._min_like_count = 1000
         self._max_duration = 180  # 3 minutes
+        self._max_publish_age = 7  # days
         self._region_code = "US"
 
         # Callbacks for database operations
@@ -115,6 +116,7 @@ class TikTokScheduler:
                         self._min_view_count = settings.get("min_view_count", 10000)
                         self._min_like_count = settings.get("min_like_count", 1000)
                         self._max_duration = settings.get("max_duration", 180)
+                        self._max_publish_age = settings.get("max_publish_age", 7)
                         self._region_code = settings.get("region_code", "US")
 
                         # Check if enabled
@@ -258,6 +260,7 @@ class TikTokScheduler:
                     duration = video.get('duration')
                     view_count = video.get('view_count')
                     like_count = video.get('like_count')
+                    published_at = video.get('published_at')
                     
                     # Only filter on fields that were actually extracted
                     if duration is not None and duration > 0:
@@ -269,6 +272,19 @@ class TikTokScheduler:
                     if like_count is not None and like_count > 0:
                         if like_count < self._min_like_count:
                             continue
+                    
+                    # Filter by publish age
+                    if published_at and self._max_publish_age > 0:
+                        try:
+                            pub_date = datetime.fromisoformat(published_at.replace('Z', '+00:00'))
+                            # Remove timezone info for comparison
+                            if pub_date.tzinfo:
+                                pub_date = pub_date.replace(tzinfo=None)
+                            age_days = (datetime.now() - pub_date).days
+                            if age_days > self._max_publish_age:
+                                continue
+                        except (ValueError, TypeError):
+                            pass  # If we can't parse the date, don't filter
                     
                     videos.append(video)
                     
