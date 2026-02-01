@@ -1026,22 +1026,26 @@ class VideoPipeline:
         except Exception as e:
             logger.warning(f"Failed to get video dimensions: {e}")
 
-        # Extract audio from video using ffmpeg
-        await self._update_task(task, TaskStatus.DOWNLOADING, 10, "提取音频...")
-        audio_path = task_dir / "audio.mp3"
-        try:
-            result = subprocess.run(
-                ["ffmpeg", "-i", str(new_video_path), "-vn", "-acodec", "libmp3lame", "-q:a", "2", "-y", str(audio_path)],
-                capture_output=True,
-                text=True
-            )
-            if result.returncode == 0 and audio_path.exists():
-                task.audio_path = audio_path
-                logger.info(f"Extracted audio to: {audio_path}")
-            else:
-                logger.warning(f"Failed to extract audio: {result.stderr}")
-        except Exception as e:
-            logger.warning(f"Failed to extract audio: {e}")
+        # Extract audio from video using ffmpeg (skip in transfer-only mode)
+        opts = task.options
+        if opts.add_subtitles or opts.add_tts:
+            await self._update_task(task, TaskStatus.DOWNLOADING, 10, "提取音频...")
+            audio_path = task_dir / "audio.mp3"
+            try:
+                result = subprocess.run(
+                    ["ffmpeg", "-i", str(new_video_path), "-vn", "-acodec", "libmp3lame", "-q:a", "2", "-y", str(audio_path)],
+                    capture_output=True,
+                    text=True
+                )
+                if result.returncode == 0 and audio_path.exists():
+                    task.audio_path = audio_path
+                    logger.info(f"Extracted audio to: {audio_path}")
+                else:
+                    logger.warning(f"Failed to extract audio: {result.stderr}")
+            except Exception as e:
+                logger.warning(f"Failed to extract audio: {e}")
+        else:
+            logger.info("Skipping audio extraction: transfer-only mode (no subtitles or TTS)")
 
         # Generate thumbnail from first frame
         thumbnail_path = task_dir / "thumbnail.jpg"
@@ -1163,12 +1167,18 @@ class VideoPipeline:
             except Exception as e:
                 logger.warning(f"Failed to get video dimensions: {e}")
 
-        # Move audio file to task directory
+        # Move audio file to task directory (skip in transfer-only mode)
         if task.audio_path and task.audio_path.exists():
-            new_audio_path = task_dir / f"audio{task.audio_path.suffix}"
-            shutil.move(str(task.audio_path), str(new_audio_path))
-            task.audio_path = new_audio_path
-            logger.info(f"Moved audio to: {new_audio_path}")
+            if opts.add_subtitles or opts.add_tts:
+                new_audio_path = task_dir / f"audio{task.audio_path.suffix}"
+                shutil.move(str(task.audio_path), str(new_audio_path))
+                task.audio_path = new_audio_path
+                logger.info(f"Moved audio to: {new_audio_path}")
+            else:
+                # Transfer-only mode: delete temp audio file, not needed
+                task.audio_path.unlink(missing_ok=True)
+                task.audio_path = None
+                logger.info("Deleted temp audio: transfer-only mode (no subtitles or TTS)")
 
         # Move downloaded subtitle to task directory
         if task.downloaded_subtitle_path and task.downloaded_subtitle_path.exists():
@@ -2138,6 +2148,14 @@ class VideoPipeline:
         """Step 5: Process video (burn subtitles, merge audio)"""
         step_name = "process_video"
         opts = task.options
+
+        # Skip entirely in transfer-only mode (no subtitles, no TTS)
+        if not opts.add_subtitles and not opts.add_tts:
+            logger.info("Skipping video processing: transfer-only mode")
+            # Use original video as final video (no processing needed)
+            task.final_video_path = task.video_path
+            await self._skip_step(task, step_name, "仅搬运模式，跳过视频处理")
+            return True
 
         await self._start_step(task, step_name)
         await self._update_task(task, TaskStatus.PROCESSING_VIDEO, 70, "处理视频中...")
