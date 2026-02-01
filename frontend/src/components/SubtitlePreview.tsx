@@ -210,11 +210,10 @@ export default function SubtitlePreview({
         {/* Bottom subtitle */}
         {((showOriginal && !showTranslated) || (showTranslated && !showOriginal)) ? (
           // Single subtitle mode
-          // Scale margin_v same as dual mode to match ASS behavior (margin_v * height / 288)
           <div
             style={{
               ...styleToCSS(showTranslated ? translatedStyle : originalStyle),
-              bottom: `${(showTranslated ? translatedStyle : originalStyle).margin_v * scale}px`,
+              bottom: `${(showTranslated ? translatedStyle : originalStyle).margin_v}px`,
             }}
           >
             {showTranslated ? displayTranslatedText : displayOriginalText}
