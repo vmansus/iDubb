@@ -122,10 +122,10 @@ class YouTubeDownloader(BaseDownloader):
         # Additional options to bypass restrictions
         # Note: android/ios clients don't support cookies
         # mweb and web clients support cookies but may have SABR issues
-        # Use mweb which works better with cookies
+        # tv client avoids n-challenge issues with player 4e51e895 (yt-dlp#15814)
         self.ydl_opts_base['extractor_args'] = {
             'youtube': {
-                'player_client': ['mweb', 'web'],
+                'player_client': ['tv', 'mweb', 'web'],
             }
         }
 
