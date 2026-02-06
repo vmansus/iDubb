@@ -8,7 +8,10 @@ from typing import Optional, List
 
 # Compute paths at module level for consistency
 _BASE_DIR = Path(__file__).parent.parent
-_DATA_DIR = _BASE_DIR / "data"
+
+# Data directory: use IDUBB_DATA_DIR env var, or default to ~/.idubb (outside worktree)
+# This allows multiple worktrees to share the same database
+_DATA_DIR = Path(os.environ.get("IDUBB_DATA_DIR", Path.home() / ".idubb"))
 _DATABASE_PATH = _DATA_DIR / "idubb.db"
 
 
