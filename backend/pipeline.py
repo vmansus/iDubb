@@ -13,6 +13,8 @@ Video Processing Pipeline - Core orchestration module
 每个步骤都是可中断的，支持单独重试和查看结果。
 """
 import asyncio
+import os
+import signal
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional, List, Dict, Any
@@ -239,14 +241,17 @@ class ProcessingTask:
 
     # Cancellation support
     _cancel_requested: bool = field(default=False, repr=False)
+    _active_processes: set = field(default_factory=set, repr=False)
+    _process_lock: asyncio.Lock = field(default_factory=asyncio.Lock, repr=False)
 
     # Timing statistics
     processing_started_at: Optional[datetime] = None  # When processing started
     total_processing_time: Optional[float] = None  # Total time in seconds
 
     def request_cancel(self):
-        """Request cancellation of this task"""
+        """Request cancellation of this task and kill all active processes"""
         self._cancel_requested = True
+        self._kill_active_processes()
 
     def is_cancelled(self) -> bool:
         """Check if cancellation was requested"""
@@ -260,6 +265,93 @@ class ProcessingTask:
         """Check if cancelled and raise exception if so"""
         if self._cancel_requested:
             raise Exception("用户手动停止")
+
+    def register_process(self, proc):
+        """Register an active subprocess for tracking"""
+        self._active_processes.add(proc)
+        logger.debug(f"Registered process {proc.pid}, active count: {len(self._active_processes)}")
+
+    def unregister_process(self, proc):
+        """Unregister a subprocess when it completes"""
+        self._active_processes.discard(proc)
+        logger.debug(f"Unregistered process {proc.pid}, active count: {len(self._active_processes)}")
+
+    def _kill_active_processes(self):
+        """Kill all active subprocesses"""
+        if not self._active_processes:
+            return
+        
+        logger.info(f"Killing {len(self._active_processes)} active processes for task cancellation")
+        for proc in list(self._active_processes):
+            try:
+                if proc.returncode is None:  # Still running
+                    # Try to kill the entire process group for subprocess
+                    try:
+                        pgid = os.getpgid(proc.pid)
+                        os.killpg(pgid, signal.SIGTERM)
+                        logger.info(f"Sent SIGTERM to process group {pgid}")
+                    except (ProcessLookupError, PermissionError, OSError):
+                        # Fallback to killing just the process
+                        proc.terminate()
+                        logger.info(f"Terminated process {proc.pid}")
+            except Exception as e:
+                logger.warning(f"Failed to kill process {proc.pid}: {e}")
+        
+        # Give processes a moment to terminate, then force kill
+        import time
+        time.sleep(0.5)
+        
+        for proc in list(self._active_processes):
+            try:
+                if proc.returncode is None:
+                    proc.kill()
+                    logger.info(f"Force killed process {proc.pid}")
+            except Exception as e:
+                logger.warning(f"Failed to force kill process {proc.pid}: {e}")
+        
+        self._active_processes.clear()
+
+    async def run_subprocess(self, cmd: List[str], timeout: float = None, check: bool = False) -> tuple:
+        """
+        Run a subprocess with cancellation support.
+        
+        Args:
+            cmd: Command and arguments
+            timeout: Optional timeout in seconds
+            check: If True, raise exception on non-zero return code
+            
+        Returns:
+            Tuple of (returncode, stdout, stderr)
+        """
+        if self._cancel_requested:
+            raise Exception("用户手动停止")
+        
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        self._active_processes.add(proc)
+        
+        try:
+            if timeout:
+                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+            else:
+                stdout, stderr = await proc.communicate()
+            
+            stdout_str = stdout.decode() if stdout else ""
+            stderr_str = stderr.decode() if stderr else ""
+            
+            if check and proc.returncode != 0:
+                raise Exception(f"Command failed with code {proc.returncode}: {stderr_str}")
+            
+            return proc.returncode, stdout_str, stderr_str
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            raise Exception(f"Command timed out after {timeout}s")
+        finally:
+            self._active_processes.discard(proc)
 
     def __post_init__(self):
         """Initialize step tracking"""
@@ -1036,17 +1128,17 @@ class VideoPipeline:
             await self._update_task(task, TaskStatus.DOWNLOADING, 10, "提取音频...")
             audio_path = task_dir / "audio.mp3"
             try:
-                result = subprocess.run(
-                    ["ffmpeg", "-i", str(new_video_path), "-vn", "-acodec", "libmp3lame", "-q:a", "2", "-y", str(audio_path)],
-                    capture_output=True,
-                    text=True
+                returncode, stdout, stderr = await task.run_subprocess(
+                    ["ffmpeg", "-i", str(new_video_path), "-vn", "-acodec", "libmp3lame", "-q:a", "2", "-y", str(audio_path)]
                 )
-                if result.returncode == 0 and audio_path.exists():
+                if returncode == 0 and audio_path.exists():
                     task.audio_path = audio_path
                     logger.info(f"Extracted audio to: {audio_path}")
                 else:
-                    logger.warning(f"Failed to extract audio: {result.stderr}")
+                    logger.warning(f"Failed to extract audio: {stderr}")
             except Exception as e:
+                if "用户手动停止" in str(e):
+                    raise
                 logger.warning(f"Failed to extract audio: {e}")
         else:
             logger.info("Skipping audio extraction: transfer-only mode (no subtitles or TTS)")
@@ -1078,7 +1170,8 @@ class VideoPipeline:
             opts.source_url,
             quality=opts.video_quality,
             format_id=opts.format_id,
-            subtitle_language=opts.subtitle_language if opts.use_existing_subtitles else None
+            subtitle_language=opts.subtitle_language if opts.use_existing_subtitles else None,
+            cancel_check=task.is_cancelled
         )
 
         # Check for cancellation after download
@@ -1101,7 +1194,8 @@ class VideoPipeline:
                         opts.source_url,
                         quality=opts.video_quality,
                         format_id=opts.format_id,
-                        subtitle_language=opts.subtitle_language if opts.use_existing_subtitles else None
+                        subtitle_language=opts.subtitle_language if opts.use_existing_subtitles else None,
+                        cancel_check=task.is_cancelled
                     )
                     task.check_cancelled()
                 else:
@@ -1302,9 +1396,15 @@ class VideoPipeline:
                     engine=opts.ocr_engine,
                     api_key=api_key,
                     frame_interval=opts.ocr_frame_interval,
+                    cancel_check=task.is_cancelled,
                 )
                 
-                result = await ocr.extract_text(task.video_path)
+                try:
+                    result = await ocr.extract_text(task.video_path)
+                except Exception as e:
+                    # Ensure processes are killed on any error
+                    ocr.kill_active_processes()
+                    raise
                 
                 if not result.success:
                     raise Exception(f"OCR failed: {result.error}")
@@ -1554,7 +1654,7 @@ class VideoPipeline:
             translated_segments = self._transcription_cache.get(f"{task.task_id}_translated")
 
             if not transcription or not translated_segments:
-                # Try to restore from SRT files
+                # Try to restore from SRT files (returns dicts already)
                 original_segments = []
                 if task.subtitle_path and task.subtitle_path.exists():
                     original_segments = self._parse_srt_file(task.subtitle_path)
@@ -1566,6 +1666,7 @@ class VideoPipeline:
                 if not original_segments or not translated_segments:
                     await self._skip_step(task, step_name, "Could not load subtitle segments")
                     return True
+                # translated_segments are already dicts from _parse_srt_file
             else:
                 # Convert transcription segments to dict format
                 original_segments = [
@@ -2274,7 +2375,16 @@ class VideoPipeline:
                     else:
                         logger.warning(f"Subtitle preset not found: {preset_id}, using global defaults")
 
-                if opts.dual_subtitles and task.translated_subtitle_path and task.translated_subtitle_path.exists():
+                # Determine subtitle mode from preset or fallback to dual_subtitles option
+                subtitle_mode = "dual"  # default
+                if preset_data:
+                    subtitle_mode = preset_data.get('subtitle_mode', 'dual')
+                    logger.info(f"Using subtitle_mode from preset: {subtitle_mode}")
+                elif not opts.dual_subtitles:
+                    subtitle_mode = "translated_only"
+                    logger.info(f"Using subtitle_mode from dual_subtitles option: {subtitle_mode}")
+
+                if subtitle_mode == "dual" and task.translated_subtitle_path and task.translated_subtitle_path.exists():
                     # Dual subtitles mode - use preset or global defaults
                     if preset_data:
                         # Use preset styles
@@ -2311,34 +2421,72 @@ class VideoPipeline:
                         video_width=video_dimensions.width if video_dimensions else 0,
                         video_height=video_dimensions.height if video_dimensions else 0
                     )
-                elif task.translated_subtitle_path and task.translated_subtitle_path.exists():
+                elif subtitle_mode == "translated_only" and task.translated_subtitle_path and task.translated_subtitle_path.exists():
                     # Single subtitle (translated only)
-                    await self.subtitle_burner.burn_subtitles(
-                        task.video_path,
-                        task.translated_subtitle_path,
-                        task.final_video_path
-                    )
-                elif task.subtitle_path and task.subtitle_path.exists():
-                    # Single subtitle (original only) - subtitles-only mode or fallback
-                    # Use preset style if available (preset_data already loaded above)
+                    single_style = None
+                    if preset_data:
+                        single_style = SubtitleStyle.from_settings(preset_data.get('translated_style', {}))
+                        logger.info(f"Using preset translated_style for single subtitle: {preset_data.get('name')}")
+                    
+                    if single_style:
+                        await self.subtitle_burner.burn_subtitles(
+                            task.video_path,
+                            task.translated_subtitle_path,
+                            task.final_video_path,
+                            style=single_style,
+                            video_width=video_dimensions.width if video_dimensions else 0,
+                            video_height=video_dimensions.height if video_dimensions else 0
+                        )
+                    else:
+                        await self.subtitle_burner.burn_subtitles(
+                            task.video_path,
+                            task.translated_subtitle_path,
+                            task.final_video_path,
+                            video_width=video_dimensions.width if video_dimensions else 0,
+                            video_height=video_dimensions.height if video_dimensions else 0
+                        )
+                elif subtitle_mode == "original_only" and task.subtitle_path and task.subtitle_path.exists():
+                    # Single subtitle (original only)
                     single_style = None
                     if preset_data:
                         single_style = SubtitleStyle.from_settings(preset_data.get('original_style', {}))
-                        logger.info(f"Using preset style for single subtitle: {preset_data.get('name')}")
+                        logger.info(f"Using preset original_style for single subtitle: {preset_data.get('name')}")
 
                     if single_style:
                         await self.subtitle_burner.burn_subtitles(
                             task.video_path,
                             task.subtitle_path,
                             task.final_video_path,
-                            style=single_style
+                            style=single_style,
+                            video_width=video_dimensions.width if video_dimensions else 0,
+                            video_height=video_dimensions.height if video_dimensions else 0
                         )
                     else:
                         await self.subtitle_burner.burn_subtitles(
                             task.video_path,
                             task.subtitle_path,
-                            task.final_video_path
+                            task.final_video_path,
+                            video_width=video_dimensions.width if video_dimensions else 0,
+                            video_height=video_dimensions.height if video_dimensions else 0
                         )
+                elif task.translated_subtitle_path and task.translated_subtitle_path.exists():
+                    # Fallback: translated subtitle available
+                    await self.subtitle_burner.burn_subtitles(
+                        task.video_path,
+                        task.translated_subtitle_path,
+                        task.final_video_path,
+                        video_width=video_dimensions.width if video_dimensions else 0,
+                        video_height=video_dimensions.height if video_dimensions else 0
+                    )
+                elif task.subtitle_path and task.subtitle_path.exists():
+                    # Fallback: original subtitle available
+                    await self.subtitle_burner.burn_subtitles(
+                        task.video_path,
+                        task.subtitle_path,
+                        task.final_video_path,
+                        video_width=video_dimensions.width if video_dimensions else 0,
+                        video_height=video_dimensions.height if video_dimensions else 0
+                    )
                 else:
                     # No subtitles available, just copy
                     shutil.copy(task.video_path, task.final_video_path)
@@ -2825,6 +2973,9 @@ class VideoPipeline:
         self.tasks[task.task_id] = task
         # Record processing start time
         task.processing_started_at = datetime.now()
+        
+        # Set cancel_check on processors so they can be interrupted
+        self.video_processor.set_cancel_check(task.is_cancelled)
 
         try:
             # Run video processing steps in sequence

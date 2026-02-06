@@ -800,7 +800,7 @@ export default function TaskDetail() {
                         <div className="flex items-center space-x-2">
                           <Icon className="h-4 w-4 text-gray-500" />
                           <span className={`font-medium ${willBeSkipped ? 'text-gray-500' : 'text-gray-900'}`}>
-                            {t(`taskDetail.steps.${stepName}`)}
+                            {t(`taskDetail.steps.${stepName === 'transcribe' && taskOptions?.options?.use_ocr ? 'transcribeOcr' : stepName}`)}
                           </span>
                           {willBeSkipped && (
                             <span className="px-1.5 py-0.5 text-xs bg-yellow-100 text-yellow-700 rounded">
@@ -840,7 +840,7 @@ export default function TaskDetail() {
                                 || currentVideoQuality
                                 || currentValue
 
-                              return (isFinished || isFailed || isPaused) ? (
+                              return (step?.status !== 'running') ? (
                                 <select
                                   value={currentValue}
                                   onFocus={() => setFetchVideoInfo(true)} // Lazy load on focus
@@ -880,7 +880,42 @@ export default function TaskDetail() {
 
                             {/* Transcribe step - whisper model, source language, use existing subtitles */}
                             {stepName === 'transcribe' && (
-                              (isFinished || isFailed || isPaused) ? (
+                              (step?.status !== 'running') ? (
+                                taskOptions.options.use_ocr ? (
+                                  /* OCR mode - editable OCR engine and frame interval */
+                                  <>
+                                    <select
+                                      value={String(editedOptions.ocr_engine ?? taskOptions.options.ocr_engine ?? 'paddleocr')}
+                                      onChange={(e) => {
+                                        const newOpts = { ...editedOptions, ocr_engine: e.target.value }
+                                        setEditedOptions(newOpts)
+                                        updateOptionsMutation.mutate(newOpts)
+                                      }}
+                                      disabled={updateOptionsMutation.isPending}
+                                      className="px-2 py-0.5 bg-amber-500 text-white border border-amber-600 rounded text-xs font-medium"
+                                    >
+                                      <option value="paddleocr">🔍 PaddleOCR</option>
+                                      <option value="openai">🔍 OpenAI</option>
+                                      <option value="anthropic">🔍 Anthropic</option>
+                                    </select>
+                                    <select
+                                      value={String(editedOptions.ocr_frame_interval ?? taskOptions.options.ocr_frame_interval ?? 0.5)}
+                                      onChange={(e) => {
+                                        const newOpts = { ...editedOptions, ocr_frame_interval: parseFloat(e.target.value) }
+                                        setEditedOptions(newOpts)
+                                        updateOptionsMutation.mutate(newOpts)
+                                      }}
+                                      disabled={updateOptionsMutation.isPending}
+                                      className="px-2 py-0.5 bg-white border border-gray-300 rounded text-xs"
+                                    >
+                                      <option value="0.5">0.5s 间隔</option>
+                                      <option value="1">1s 间隔</option>
+                                      <option value="2">2s 间隔</option>
+                                      <option value="3">3s 间隔</option>
+                                      <option value="5">5s 间隔</option>
+                                    </select>
+                                  </>
+                                ) : (
                                 <>
                                   {/* Use existing subtitles option */}
                                   <select
@@ -950,12 +985,18 @@ export default function TaskDetail() {
                                     </>
                                   )}
                                 </>
+                                )
                               ) : (
                                 <>
                                   {taskOptions.options.use_existing_subtitles ? (
                                     <span className="px-2 py-0.5 bg-yellow-100 text-yellow-700 rounded">
                                       {t('taskDetail.options.useExistingSub')}: {String(taskOptions.options.subtitle_language || 'auto')}
                                     </span>
+                                  ) : taskOptions.options.use_ocr ? (
+                                    <>
+                                      <span className="px-2 py-0.5 bg-amber-500 text-white rounded font-medium">🔍 {String(taskOptions.options.ocr_engine || 'paddleocr')}</span>
+                                      <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded">{String(taskOptions.options.ocr_frame_interval || 0.5)}s</span>
+                                    </>
                                   ) : (
                                     <>
                                       <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded">{String(taskOptions.options.whisper_model || '')}</span>
@@ -968,7 +1009,7 @@ export default function TaskDetail() {
 
                             {/* Translate step - translation engine & target language */}
                             {stepName === 'translate' && (
-                              (isFinished || isFailed || isPaused) ? (
+                              (step?.status !== 'running') ? (
                                 <>
                                   <select
                                     value={String(editedOptions.translation_engine ?? taskOptions.options.translation_engine ?? '')}
@@ -1010,7 +1051,7 @@ export default function TaskDetail() {
 
                             {/* TTS step - tts service, voice, and add_tts toggle */}
                             {stepName === 'tts' && (
-                              (isFinished || isFailed || isPaused) ? (
+                              (step?.status !== 'running') ? (
                                 <>
                                   <label className="flex items-center gap-1 cursor-pointer">
                                     <input
@@ -1075,15 +1116,23 @@ export default function TaskDetail() {
                             )}
 
                             {/* Process video step - subtitle preset */}
-                            {stepName === 'process_video' && (
-                              (isFinished || isFailed || isPaused) ? (
+                            {stepName === 'process_video' && (() => {
+                              const currentPresetId = String(editedOptions.subtitle_preset ?? taskOptions.options.subtitle_preset ?? presetsData?.presets?.[0]?.id ?? '')
+                              const currentPreset = presetsData?.presets?.find(p => p.id === currentPresetId)
+                              const subtitleMode = currentPreset?.subtitle_mode ?? 'dual'
+                              const modeLabel = subtitleMode === 'dual' ? t('taskDetail.options.dualSubtitles') 
+                                : subtitleMode === 'translated_only' ? t('taskDetail.options.translatedOnly', '仅译文')
+                                : t('taskDetail.options.originalOnly', '仅原文')
+                              const modeColor = subtitleMode === 'dual' ? 'bg-blue-100 text-blue-600' 
+                                : subtitleMode === 'translated_only' ? 'bg-green-100 text-green-600'
+                                : 'bg-gray-100 text-gray-600'
+                              
+                              return (step?.status !== 'running') ? (
                                 <>
-                                  {taskOptions.options.dual_subtitles && (
-                                    <span className="px-2 py-0.5 bg-blue-100 text-blue-600 rounded">{t('taskDetail.options.dualSubtitles')}</span>
-                                  )}
+                                  <span className={`px-2 py-0.5 rounded ${modeColor}`}>{modeLabel}</span>
                                   {presetsData?.presets && (
                                     <select
-                                      value={String(editedOptions.subtitle_preset ?? taskOptions.options.subtitle_preset ?? presetsData.presets[0]?.id ?? '')}
+                                      value={currentPresetId}
                                       onChange={(e) => {
                                         const newOpts = { ...editedOptions, subtitle_preset: e.target.value }
                                         setEditedOptions(newOpts)
@@ -1100,21 +1149,19 @@ export default function TaskDetail() {
                                 </>
                               ) : (
                                 <>
-                                  {taskOptions.options.dual_subtitles && (
-                                    <span className="px-2 py-0.5 bg-blue-100 text-blue-600 rounded">{t('taskDetail.options.dualSubtitles')}</span>
-                                  )}
-                                  {taskOptions.options.subtitle_preset && (
+                                  <span className={`px-2 py-0.5 rounded ${modeColor}`}>{modeLabel}</span>
+                                  {currentPresetId && (
                                     <span className="px-2 py-0.5 bg-purple-100 text-purple-600 rounded">
-                                      {presetsData?.presets?.find(p => p.id === taskOptions.options.subtitle_preset)?.name || String(taskOptions.options.subtitle_preset)}
+                                      {currentPreset?.name || currentPresetId}
                                     </span>
                                   )}
                                 </>
                               )
-                            )}
+                            })()}
 
                             {/* Upload step - platform checkboxes (only enabled after metadata approval) */}
                             {stepName === 'upload' && (
-                              (isFinished || isFailed || isPaused) ? (
+                              (step?.status !== 'running') ? (
                                 <div className="flex flex-wrap gap-2 items-center">
                                   {/* Show approval status hint */}
                                   {!task.metadata_approved && (

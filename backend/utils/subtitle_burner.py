@@ -4,6 +4,7 @@ Subtitle Burning Module - Embed subtitles into video
 """
 import asyncio
 import subprocess
+import json
 import os
 from pathlib import Path
 from typing import Optional, List
@@ -148,6 +149,7 @@ class SubtitleStyle:
         # Get alignment and convert to ASS format
         alignment_str = style_config.get("alignment", "bottom")
         alignment = cls.alignment_to_ass(alignment_str)
+        logger.info(f"[SubtitleStyle.from_settings] alignment: '{alignment_str}' -> ASS {alignment}")
 
         # Get back opacity for BorderStyle determination
         back_opacity = style_config.get("back_opacity", 0)
@@ -326,7 +328,9 @@ class SubtitleBurner:
         self,
         srt_path: Path,
         output_path: Path,
-        style: SubtitleStyle
+        style: SubtitleStyle,
+        video_width: int = 0,
+        video_height: int = 0
     ) -> bool:
         """
         Convert SRT to ASS with embedded styles for fast rendering.
@@ -339,6 +343,8 @@ class SubtitleBurner:
             srt_path: Input SRT file
             output_path: Output ASS file
             style: Subtitle styling
+            video_width: Video width for accurate max_width calculation
+            video_height: Video height for font scaling calculation
 
         Returns:
             True if successful
@@ -366,11 +372,32 @@ class SubtitleBurner:
                     time_str = time_str[1:]
                 return time_str
 
+            # ASS default PlayRes (used for font scaling - must stay at 288 to match frontend)
+            PLAY_RES_X = 384
+            PLAY_RES_Y = 288
+            
+            # Frontend preview container height varies by aspect ratio:
+            # - Vertical (9:16): 200px wide * 16/9 = 355.5px tall
+            # - Horizontal (16:9): typically ~288px tall (matches ASS default)
+            # 
+            # Frontend uses margin_v directly (raw pixels) without scaling in single subtitle mode.
+            # ASS scales margin_v by (video_height / PlayResY).
+            # To match frontend position, we need to adjust margin_v:
+            #   adjusted_margin = margin_v * (PLAY_RES_Y / preview_container_height)
+            is_vertical = video_height > video_width if video_width > 0 and video_height > 0 else False
+            if is_vertical:
+                # Vertical video: preview container is 200px wide * 16/9 = 355.5px tall
+                preview_container_height = 200.0 * 16.0 / 9.0  # = 355.5
+                margin_v_adjusted = int(style.margin_v * PLAY_RES_Y / preview_container_height)
+                logger.info(f"[ASS] Vertical video: margin_v {style.margin_v} -> {margin_v_adjusted} (adjusted for preview height {preview_container_height:.1f})")
+            else:
+                # Horizontal video: preview container height ≈ 288 (matches ASS default)
+                margin_v_adjusted = style.margin_v
+            
             # Calculate horizontal margin based on max_width
-            DEFAULT_PLAY_RES_X = 384
             max_width_pct = getattr(style, 'max_width', 90)
             if max_width_pct < 100:
-                margin_h = int(DEFAULT_PLAY_RES_X * (100 - max_width_pct) / 2 / 100)
+                margin_h = int(PLAY_RES_X * (100 - max_width_pct) / 2 / 100)
                 margin_h = max(margin_h, style.margin_h)
             else:
                 margin_h = style.margin_h
@@ -387,7 +414,7 @@ class SubtitleBurner:
                 actual_outline_color = style.outline_color
                 actual_shadow = style.shadow
 
-            # Build ASS header
+            # Build ASS header (use default PlayRes 384x288 for correct font scaling)
             ass_content = f"""[Script Info]
 Title: Styled Subtitle
 ScriptType: v4.00+
@@ -397,17 +424,74 @@ PlayDepth: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,{style.font_name},{style.font_size},{style.primary_color},&H000000FF,{actual_outline_color},{style.back_color},{-1 if style.bold else 0},{-1 if style.italic else 0},0,0,{style.scale_x},{style.scale_y},{style.spacing},0,{border_style},{box_outline},{actual_shadow},{style.alignment},{margin_h},{margin_h},{style.margin_v},1
+Style: Default,{style.font_name},{style.font_size},{style.primary_color},&H000000FF,{actual_outline_color},{style.back_color},{-1 if style.bold else 0},{-1 if style.italic else 0},0,0,{style.scale_x},{style.scale_y},{style.spacing},0,{border_style},{box_outline},{actual_shadow},{style.alignment},{margin_h},{margin_h},{margin_v_adjusted},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
 
+            # Calculate max characters per line to match frontend preview behavior
+            # 
+            # Frontend uses CSS: max-width: X% + word-break: break-word
+            # ASS uses PlayResX=384, PlayResY=288 as reference resolution
+            # Font sizes scale by: actual_size = font_size * (video_height / 288)
+            #
+            # Calculation:
+            # 1. available_width = video_width * max_width_pct / 100
+            # 2. scale_factor = video_height / 288 (ASS reference height)
+            # 3. actual_font_width = font_size * scale_factor (approx 1 Chinese char width)
+            # 4. chars_per_line = available_width / actual_font_width
+            #
+            font_size = getattr(style, 'font_size', 24)
+            
+            if video_width > 0 and video_height > 0:
+                # Accurate calculation with video dimensions
+                scale_factor = video_height / 288.0  # ASS reference height
+                actual_font_width = font_size * scale_factor
+                available_width = video_width * max_width_pct / 100
+                max_chars_per_line = int(available_width / actual_font_width)
+                logger.debug(f"[ASS] video={video_width}x{video_height}, scale={scale_factor:.2f}, "
+                           f"actual_font_width={actual_font_width:.1f}px, available_width={available_width:.0f}px")
+            else:
+                # Fallback: estimate based on font size
+                if font_size <= 16:
+                    base_chars = 22
+                elif font_size <= 22:
+                    base_chars = 30
+                else:
+                    base_chars = 40
+                max_chars_per_line = int(base_chars * max_width_pct / 100)
+            
+            max_chars_per_line = max(6, min(max_chars_per_line, 80))  # Clamp to reasonable range
+            logger.debug(f"[ASS] max_width={max_width_pct}%, font_size={font_size}, max_chars_per_line={max_chars_per_line}")
+
+            def wrap_text(text: str, max_chars: int) -> str:
+                """Wrap text to fit within max characters per line"""
+                lines = []
+                current_line = ""
+                # Split by existing line breaks first
+                for segment in text.split('\n'):
+                    words = list(segment)  # Split into characters for CJK
+                    for char in words:
+                        if len(current_line) >= max_chars:
+                            lines.append(current_line)
+                            current_line = char
+                        else:
+                            current_line += char
+                    if current_line:
+                        lines.append(current_line)
+                        current_line = ""
+                if current_line:
+                    lines.append(current_line)
+                return '\\N'.join(lines)
+
             events = []
             for _, start, end, text in matches:
                 start_ass = srt_time_to_ass(start)
                 end_ass = srt_time_to_ass(end)
-                text_clean = text.strip().replace('\n', '\\N')
+                # Always apply max_width wrapping
+                text_clean = wrap_text(text.strip(), max_chars_per_line)
+                logger.debug(f"[ASS] Original: '{text.strip()[:30]}...' -> Wrapped: '{text_clean[:30]}...' (max_chars={max_chars_per_line})")
                 events.append(f"Dialogue: 0,{start_ass},{end_ass},Default,,0,0,0,,{text_clean}")
 
             ass_content += '\n'.join(events)
@@ -475,7 +559,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         video_path: Path,
         subtitle_path: Path,
         output_path: Path,
-        style: SubtitleStyle = None
+        style: SubtitleStyle = None,
+        video_width: int = 0,
+        video_height: int = 0
     ) -> bool:
         """
         Burn subtitles into video
@@ -485,6 +571,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             subtitle_path: Subtitle file (SRT, ASS, VTT)
             output_path: Output video file
             style: Subtitle styling options
+            video_width: Video width in pixels (for max_width calculation)
+            video_height: Video height in pixels (for scaling calculation)
 
         Returns:
             True if successful
@@ -507,11 +595,29 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             # if resegmented_subtitle.exists():
             #     fixed_subtitle = resegmented_subtitle
 
+            # Get video dimensions if not provided (needed for accurate max_width calculation)
+            if video_width == 0 or video_height == 0:
+                try:
+                    probe_cmd = [
+                        "ffprobe", "-v", "quiet", "-print_format", "json",
+                        "-show_streams", "-select_streams", "v:0", str(video_path)
+                    ]
+                    result = subprocess.run(probe_cmd, capture_output=True, text=True)
+                    if result.returncode == 0:
+                        probe_data = json.loads(result.stdout)
+                        streams = probe_data.get("streams", [])
+                        if streams:
+                            video_width = streams[0].get("width", 0)
+                            video_height = streams[0].get("height", 0)
+                            logger.debug(f"[burn_subtitles] Detected video dimensions: {video_width}x{video_height}")
+                except Exception as e:
+                    logger.warning(f"Failed to get video dimensions: {e}")
+
             # === OPTIMIZATION: Convert SRT to ASS with embedded styles ===
             # Using force_style with SRT is extremely slow (100x+ slower)
             # Converting to ASS first makes subtitle rendering much faster
             styled_ass = temp_dir / "styled_subtitle.ass"
-            ass_created = self._create_styled_ass(fixed_subtitle, styled_ass, style)
+            ass_created = self._create_styled_ass(fixed_subtitle, styled_ass, style, video_width, video_height)
 
             if ass_created and styled_ass.exists():
                 # Use optimized ASS path (same as dual subtitles)

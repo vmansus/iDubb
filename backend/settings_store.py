@@ -439,6 +439,7 @@ class TikTokSettings:
     min_view_count: int = 10000
     min_like_count: int = 1000
     max_duration: int = 180  # 3 minutes max for TikTok
+    max_publish_age: int = 7  # days - only include videos published within this many days
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -451,6 +452,7 @@ class TikTokSettings:
             "min_view_count": self.min_view_count,
             "min_like_count": self.min_like_count,
             "max_duration": self.max_duration,
+            "max_publish_age": self.max_publish_age,
         }
 
 

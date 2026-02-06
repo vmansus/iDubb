@@ -9,9 +9,10 @@ import logging
 import subprocess
 from pathlib import Path
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Callable
 import tempfile
 import json
+from difflib import SequenceMatcher
 
 # Use loguru logger
 
@@ -43,6 +44,7 @@ class VideoOCR:
         model: Optional[str] = None,
         frame_interval: float = 0.5,
         min_text_duration: float = 0.5,
+        cancel_check: Optional[Callable[[], bool]] = None,
     ):
         self.engine = engine
         self.api_key = api_key
@@ -50,6 +52,8 @@ class VideoOCR:
         self.frame_interval = frame_interval
         self.min_text_duration = min_text_duration
         self._paddle_ocr = None
+        self.cancel_check = cancel_check
+        self._active_processes: List[asyncio.subprocess.Process] = []
         
         # Validate engine configuration early
         self._validate_engine()
@@ -152,6 +156,13 @@ class VideoOCR:
             return OCRResult(success=True, segments=segments)
             
         except Exception as e:
+            # Kill any active processes on error
+            self.kill_active_processes()
+            
+            # Re-raise cancellation exceptions
+            if "用户手动停止" in str(e):
+                raise
+            
             logger.error(f"Video OCR failed: {e}", exc_info=True)
             return OCRResult(success=False, segments=[], error=str(e))
     
@@ -173,6 +184,44 @@ class VideoOCR:
             logger.error(f"Failed to get video duration: {e}")
         return 0
     
+    def _check_cancelled(self):
+        """Check if cancellation was requested"""
+        if self.cancel_check and self.cancel_check():
+            raise Exception("用户手动停止")
+    
+    async def _run_subprocess(self, cmd: List[str], timeout: float = 30) -> Tuple[int, str, str]:
+        """Run subprocess with cancellation support"""
+        self._check_cancelled()
+        
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        self._active_processes.append(proc)
+        
+        try:
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+            return proc.returncode, stdout.decode() if stdout else "", stderr.decode() if stderr else ""
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+            raise
+        finally:
+            if proc in self._active_processes:
+                self._active_processes.remove(proc)
+    
+    def kill_active_processes(self):
+        """Kill all active subprocesses (called on cancellation)"""
+        for proc in self._active_processes:
+            try:
+                if proc.returncode is None:
+                    proc.kill()
+                    logger.info(f"Killed OCR subprocess {proc.pid}")
+            except Exception as e:
+                logger.warning(f"Failed to kill process: {e}")
+        self._active_processes.clear()
+
     async def _extract_frames(self, video_path: Path, duration: float) -> List[Tuple[Path, float]]:
         """Extract frames at regular intervals"""
         frames = []
@@ -188,35 +237,76 @@ class VideoOCR:
         logger.info(f"Will extract {len(times)} frames at {self.frame_interval}s intervals")
         
         for i, timestamp in enumerate(times):
+            # Check for cancellation before each frame
+            self._check_cancelled()
+            
             frame_path = temp_dir / f"frame_{i:04d}.jpg"
-            result = subprocess.run(
-                ["ffmpeg", "-y", "-ss", str(timestamp), "-i", str(video_path),
-                 "-frames:v", "1", "-q:v", "2", str(frame_path)],
-                capture_output=True, text=True
-            )
-            if result.returncode == 0 and frame_path.exists():
-                frames.append((frame_path, timestamp))
-            else:
-                logger.warning(f"Failed to extract frame at {timestamp}s: {result.stderr}")
+            try:
+                returncode, _, stderr = await self._run_subprocess(
+                    ["ffmpeg", "-y", "-ss", str(timestamp), "-i", str(video_path),
+                     "-frames:v", "1", "-q:v", "2", str(frame_path)],
+                    timeout=30
+                )
+                if returncode == 0 and frame_path.exists():
+                    frames.append((frame_path, timestamp))
+                else:
+                    logger.warning(f"Failed to extract frame at {timestamp}s: {stderr}")
+            except Exception as e:
+                if "用户手动停止" in str(e):
+                    raise
+                logger.warning(f"Failed to extract frame at {timestamp}s: {e}")
         
         logger.info(f"Successfully extracted {len(frames)}/{len(times)} frames")
         return frames
     
     async def _ocr_frames(self, frames: List[Tuple[Path, float]]) -> List[Tuple[float, str]]:
-        """OCR each frame"""
+        """OCR each frame with image deduplication
+        
+        Uses perceptual hashing to skip OCR for visually similar consecutive frames.
+        This reduces redundant OCR calls and improves consistency.
+        """
         results = []
-        batch_size = 5
+        last_hash = None
+        last_text = ""
+        skipped_count = 0
+        ocr_count = 0
         
-        for i in range(0, len(frames), batch_size):
-            batch = frames[i:i + batch_size]
-            logger.debug(f"Processing OCR batch {i//batch_size + 1}, frames {i+1}-{min(i+batch_size, len(frames))}")
-            batch_results = await asyncio.gather(
-                *[self._ocr_single_frame(fp, ts) for fp, ts in batch]
-            )
-            results.extend(batch_results)
-            if i + batch_size < len(frames):
-                await asyncio.sleep(0.5)
+        # Image hash distance threshold (0-64 scale)
+        # Lower = more strict, Higher = more lenient
+        # 5-10 is good for near-duplicate detection
+        HASH_DISTANCE_THRESHOLD = 8
         
+        for frame_path, timestamp in frames:
+            # Check for cancellation
+            self._check_cancelled()
+            
+            # Compute image hash
+            current_hash = self._compute_image_hash(frame_path)
+            
+            # Check if frame is similar to previous
+            if last_hash and current_hash:
+                distance = self._image_hash_distance(current_hash, last_hash)
+                if distance < HASH_DISTANCE_THRESHOLD:
+                    # Frame is similar, reuse last OCR result
+                    results.append((timestamp, last_text))
+                    skipped_count += 1
+                    logger.debug(f"Frame at {timestamp:.1f}s: skipped OCR (hash distance={distance}, reusing '{last_text[:30]}...')")
+                    continue
+            
+            # Frame is different, run OCR
+            _, text = await self._ocr_single_frame(frame_path, timestamp)
+            results.append((timestamp, text))
+            ocr_count += 1
+            
+            # Update last hash and text
+            last_hash = current_hash
+            last_text = text
+            
+            # Small delay between OCR calls to avoid overwhelming the system
+            if ocr_count % 5 == 0:
+                await asyncio.sleep(0.1)
+        
+        logger.info(f"OCR dedup stats: {ocr_count} frames OCR'd, {skipped_count} skipped (reused)")
         return results
     
     async def _ocr_single_frame(self, frame_path: Path, timestamp: float) -> Tuple[float, str]:
@@ -353,7 +443,7 @@ class VideoOCR:
                 if normalized:
                     current_text = text
                     start_time = timestamp
-            elif self._text_similarity(text, current_text) < 0.6:  # 60% similarity threshold
+            elif self._text_similarity(text, current_text) < 0.7:  # 70% similarity threshold (increased for better grouping)
                 if current_text:
                     end_time = timestamp
                     if end_time - start_time >= self.min_text_duration:
@@ -372,7 +462,38 @@ class VideoOCR:
                 segments.append(OCRSegment(text=current_text, start_time=start_time, end_time=end_time))
                 logger.debug(f"Built final segment: [{start_time:.1f}s - {end_time:.1f}s] '{current_text[:30]}...'")
         
+        # Post-process: merge similar adjacent segments
+        segments = self._merge_similar_segments(segments)
+        
         return segments
+    
+    def _merge_similar_segments(self, segments: List[OCRSegment]) -> List[OCRSegment]:
+        """Post-process to merge adjacent segments with similar text
+        
+        This catches cases where the same text was split into multiple segments
+        due to minor OCR variations between frames.
+        """
+        if len(segments) <= 1:
+            return segments
+        
+        merged = []
+        for seg in segments:
+            if merged and self._text_similarity(merged[-1].text, seg.text) > 0.8:
+                # Similar to previous segment, extend it
+                logger.debug(f"Merging segments: '{merged[-1].text[:30]}' + '{seg.text[:30]}' (similarity > 0.8)")
+                merged[-1] = OCRSegment(
+                    text=merged[-1].text,  # Keep the first text (usually cleaner)
+                    start_time=merged[-1].start_time,
+                    end_time=seg.end_time,  # Extend end time
+                    confidence=merged[-1].confidence
+                )
+            else:
+                merged.append(seg)
+        
+        if len(merged) < len(segments):
+            logger.info(f"Post-merge: {len(segments)} segments -> {len(merged)} segments")
+        
+        return merged
     
     def _normalize_text(self, text: str) -> str:
         """Normalize text for comparison"""
@@ -382,20 +503,73 @@ class VideoOCR:
         normalized = re.sub(r'[^a-zA-Z0-9\s]', '', text.lower())
         return " ".join(normalized.split())
     
+    def _compute_image_hash(self, frame_path: Path) -> Optional[str]:
+        """Compute perceptual hash of an image for deduplication
+        
+        Uses average hash (aHash) - fast and good for near-duplicate detection.
+        Returns None if hashing fails.
+        """
+        try:
+            from PIL import Image
+            import hashlib
+            
+            # Simple perceptual hash: resize to 8x8, convert to grayscale, compute mean
+            with Image.open(frame_path) as img:
+                # Resize to 8x8 and convert to grayscale
+                small = img.resize((8, 8), Image.Resampling.LANCZOS).convert('L')
+                pixels = list(small.getdata())
+                avg = sum(pixels) / len(pixels)
+                # Create binary hash based on whether each pixel is above/below average
+                bits = ''.join('1' if p > avg else '0' for p in pixels)
+                # Convert to hex string
+                return hex(int(bits, 2))[2:].zfill(16)
+        except Exception as e:
+            logger.warning(f"Failed to compute image hash: {e}")
+            return None
+    
+    def _image_hash_distance(self, hash1: str, hash2: str) -> int:
+        """Compute Hamming distance between two image hashes
+        
+        Returns number of different bits (0 = identical, 64 = completely different)
+        """
+        if not hash1 or not hash2:
+            return 64
+        try:
+            n1, n2 = int(hash1, 16), int(hash2, 16)
+            xor = n1 ^ n2
+            return bin(xor).count('1')
+        except:
+            return 64
+    
     def _text_similarity(self, text1: str, text2: str) -> float:
-        """Calculate similarity ratio between two texts (0.0 to 1.0)"""
+        """Calculate similarity ratio between two texts (0.0 to 1.0)
+        
+        Uses combination of:
+        1. SequenceMatcher (edit distance) - handles OCR char errors like 'o' vs '0'
+        2. Word set overlap (Jaccard) - handles word reordering from multi-line OCR
+        
+        Returns the HIGHER of the two scores to be lenient.
+        """
         if not text1 or not text2:
             return 0.0
         n1, n2 = self._normalize_text(text1), self._normalize_text(text2)
         if not n1 or not n2:
             return 0.0
-        # Simple word overlap similarity
+        
+        # Method 1: Edit distance (good for char substitutions)
+        edit_similarity = SequenceMatcher(None, n1, n2).ratio()
+        
+        # Method 2: Word set overlap (good for word reordering)
         words1, words2 = set(n1.split()), set(n2.split())
-        if not words1 or not words2:
-            return 0.0
-        intersection = len(words1 & words2)
-        union = len(words1 | words2)
-        return intersection / union if union > 0 else 0.0
+        if words1 and words2:
+            intersection = len(words1 & words2)
+            union = len(words1 | words2)
+            word_similarity = intersection / union if union > 0 else 0.0
+        else:
+            word_similarity = 0.0
+        
+        # Return the higher score (be lenient - if either method thinks they're similar, trust it)
+        return max(edit_similarity, word_similarity)
     
     def segments_to_srt(self, segments: List[OCRSegment]) -> str:
         """Convert segments to SRT format"""
