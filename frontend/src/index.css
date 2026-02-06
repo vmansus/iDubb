@@ -75,8 +75,9 @@ body {
   color: var(--text-muted) !important;
 }
 
-/* Dark mode: override browser default white button background */
-.dark button {
+/* Dark mode: override browser default white button background
+   Use :where() for zero specificity so Tailwind classes (bg-blue-600 etc.) always win */
+:where(.dark) button {
   background-color: transparent;
 }
 
