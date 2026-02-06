@@ -1,18 +1,8 @@
 /**
  * iDubb Browser Extension - Background Service Worker
  * Handles context menu and API communication
+ * Uses saved settings - NO HARDCODED DEFAULTS
  */
-
-// Default settings
-const DEFAULT_SETTINGS = {
-  apiUrl: 'http://localhost:8000',
-  uploadDouyin: true,
-  uploadXiaohongshu: false,
-  targetLanguage: 'zh-CN',
-  addSubtitles: true,
-  addTts: true,
-  ttsVoice: 'zh-CN-XiaoxiaoNeural'
-};
 
 // Create context menu on install
 chrome.runtime.onInstalled.addListener(() => {
@@ -23,30 +13,45 @@ chrome.runtime.onInstalled.addListener(() => {
     contexts: ['page', 'video', 'link']
   });
 
-  // Submenu items
+  // Quick actions - use saved settings
+  chrome.contextMenus.create({
+    id: 'idubb-quick',
+    parentId: 'idubb-parent',
+    title: '🚀 使用默认配置发布',
+    contexts: ['page', 'video', 'link']
+  });
+
+  chrome.contextMenus.create({
+    id: 'idubb-separator1',
+    parentId: 'idubb-parent',
+    type: 'separator',
+    contexts: ['page', 'video', 'link']
+  });
+
+  // Platform-specific quick actions
   chrome.contextMenus.create({
     id: 'idubb-douyin',
     parentId: 'idubb-parent',
-    title: '📱 发布到抖音',
+    title: '📱 仅发布到抖音',
     contexts: ['page', 'video', 'link']
   });
 
   chrome.contextMenus.create({
     id: 'idubb-xiaohongshu',
     parentId: 'idubb-parent',
-    title: '📕 发布到小红书',
+    title: '📕 仅发布到小红书',
     contexts: ['page', 'video', 'link']
   });
 
   chrome.contextMenus.create({
-    id: 'idubb-both',
+    id: 'idubb-bilibili',
     parentId: 'idubb-parent',
-    title: '🚀 发布到全部平台',
+    title: '📺 仅发布到 B站',
     contexts: ['page', 'video', 'link']
   });
 
   chrome.contextMenus.create({
-    id: 'idubb-separator',
+    id: 'idubb-separator2',
     parentId: 'idubb-parent',
     type: 'separator',
     contexts: ['page', 'video', 'link']
@@ -58,122 +63,205 @@ chrome.runtime.onInstalled.addListener(() => {
     title: '⚙️ 自定义选项...',
     contexts: ['page', 'video', 'link']
   });
-
-  // Initialize default settings
-  chrome.storage.sync.get('settings', (data) => {
-    if (!data.settings) {
-      chrome.storage.sync.set({ settings: DEFAULT_SETTINGS });
-    }
-  });
 });
 
 // Handle context menu clicks
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
+  console.log('[iDubb] 右键菜单点击:', info.menuItemId);
+  
   const videoUrl = await getVideoUrl(info, tab);
+  console.log('[iDubb] 获取到视频 URL:', videoUrl);
   
   if (!videoUrl) {
-    showNotification('错误', '无法获取视频链接，请确保在 TikTok 视频页面右键点击');
+    showNotification('错误', '无法获取视频链接，请确保在 TikTok/YouTube 视频页面右键点击');
     return;
   }
 
+  // Get saved settings
   const settings = await getSettings();
   
-  let uploadDouyin = false;
-  let uploadXiaohongshu = false;
-
+  // Handle different menu actions
   switch (info.menuItemId) {
+    case 'idubb-quick':
+      // Use all saved settings as-is
+      await createTask(videoUrl, settings);
+      break;
+      
     case 'idubb-douyin':
-      uploadDouyin = true;
+      // Override: only Douyin
+      await createTask(videoUrl, { 
+        ...settings, 
+        uploadDouyin: true, 
+        uploadXiaohongshu: false, 
+        uploadBilibili: false 
+      });
       break;
+      
     case 'idubb-xiaohongshu':
-      uploadXiaohongshu = true;
+      // Override: only Xiaohongshu
+      await createTask(videoUrl, { 
+        ...settings, 
+        uploadDouyin: false, 
+        uploadXiaohongshu: true, 
+        uploadBilibili: false 
+      });
       break;
-    case 'idubb-both':
-      uploadDouyin = true;
-      uploadXiaohongshu = true;
+      
+    case 'idubb-bilibili':
+      // Override: only Bilibili
+      await createTask(videoUrl, { 
+        ...settings, 
+        uploadDouyin: false, 
+        uploadXiaohongshu: false, 
+        uploadBilibili: true 
+      });
       break;
+      
     case 'idubb-custom':
       // Open popup for custom options
-      chrome.action.openPopup();
-      // Store the URL for the popup to use
       chrome.storage.local.set({ pendingVideoUrl: videoUrl });
-      return;
+      chrome.action.openPopup();
+      break;
+      
     default:
       return;
   }
-
-  await createTask(videoUrl, { ...settings, uploadDouyin, uploadXiaohongshu });
 });
 
 // Get video URL from context
 async function getVideoUrl(info, tab) {
   // If clicked on a link
-  if (info.linkUrl) {
-    if (isTikTokUrl(info.linkUrl)) {
-      return info.linkUrl;
-    }
+  if (info.linkUrl && isVideoUrl(info.linkUrl)) {
+    return info.linkUrl;
   }
 
-  // If on TikTok page, try to get current video URL
-  if (tab.url && isTikTokUrl(tab.url)) {
-    // Check if it's a video page
-    if (tab.url.includes('/video/') || tab.url.includes('/@')) {
+  // If on supported video page
+  if (tab.url && isVideoUrl(tab.url)) {
+    // Check if it's a video detail page
+    if (tab.url.includes('/video/') || tab.url.includes('/watch')) {
       return tab.url;
     }
 
-    // Try to get video URL from content script
+    // Try to get video URL from content script (for feed pages)
     try {
       const response = await chrome.tabs.sendMessage(tab.id, { action: 'getVideoUrl' });
       if (response && response.videoUrl) {
         return response.videoUrl;
       }
     } catch (e) {
-      console.log('Content script not ready:', e);
+      console.log('[iDubb] Content script error:', e.message);
     }
   }
 
   return null;
 }
 
-function isTikTokUrl(url) {
-  return url && (
+function isVideoUrl(url) {
+  if (!url) return false;
+  return (
     url.includes('tiktok.com') ||
-    url.includes('vm.tiktok.com')
+    url.includes('vm.tiktok.com') ||
+    url.includes('youtube.com') ||
+    url.includes('youtu.be')
   );
 }
 
+// Get saved settings from storage
 async function getSettings() {
   return new Promise((resolve) => {
     chrome.storage.sync.get('settings', (data) => {
-      resolve(data.settings || DEFAULT_SETTINGS);
+      // Return saved settings, or empty object if none
+      // popup.js will have loaded defaults from backend
+      resolve(data.settings || {});
     });
   });
 }
 
-async function createTask(videoUrl, options) {
-  const settings = await getSettings();
-  const apiUrl = settings.apiUrl || DEFAULT_SETTINGS.apiUrl;
+// Create task using saved settings
+async function createTask(videoUrl, settings) {
+  const apiUrl = settings.apiUrl || 'http://localhost:8888';
+  
+  console.log('[iDubb] Creating task with settings:', settings);
 
-  showNotification('处理中', `正在创建任务: ${videoUrl.substring(0, 50)}...`);
+  // Build task payload - only include relevant settings
+  const taskPayload = {
+    source_url: videoUrl,
+    source_platform: detectPlatform(videoUrl),
+    // Video quality
+    video_quality: settings.videoQuality,
+    // Language
+    source_language: settings.sourceLanguage,
+    target_language: settings.targetLanguage,
+    // Upload targets
+    upload_douyin: settings.uploadDouyin,
+    upload_xiaohongshu: settings.uploadXiaohongshu,
+    upload_bilibili: settings.uploadBilibili
+  };
+
+  // Handle processing mode
+  if (settings.processingMode === 'direct_transfer') {
+    // 直接搬运：不需要翻译、字幕、配音
+    taskPayload.skip_translation = true;
+    taskPayload.add_subtitles = false;
+    taskPayload.add_tts = false;
+  } else if (settings.processingMode === 'subtitles_only') {
+    // 仅字幕：需要翻译和字幕，不需要配音
+    taskPayload.add_subtitles = true;
+    taskPayload.add_tts = false;
+    taskPayload.translation_engine = settings.translationEngine;
+    // 字幕相关配置
+    taskPayload.dual_subtitles = settings.dualSubtitles;
+    if (settings.subtitlePreset) {
+      taskPayload.subtitle_preset = settings.subtitlePreset;
+    }
+  } else {
+    // full_translation 或 smart：根据实际配置决定
+    taskPayload.add_subtitles = settings.addSubtitles;
+    taskPayload.add_tts = settings.addTts;
+    
+    // 只在需要翻译时传翻译配置
+    if (settings.addSubtitles || settings.addTts) {
+      taskPayload.translation_engine = settings.translationEngine;
+    }
+    
+    // 只在需要字幕时传字幕配置
+    if (settings.addSubtitles) {
+      taskPayload.dual_subtitles = settings.dualSubtitles;
+      if (settings.subtitlePreset) {
+        taskPayload.subtitle_preset = settings.subtitlePreset;
+      }
+    }
+    
+    // 只在需要配音时传 TTS 配置
+    if (settings.addTts) {
+      taskPayload.tts_service = settings.ttsService;
+      taskPayload.tts_voice = settings.ttsVoice;
+      taskPayload.replace_original_audio = settings.replaceOriginalAudio;
+      taskPayload.original_audio_volume = (settings.originalVolume || 30) / 100;
+    }
+  }
+
+  // Remove undefined values
+  Object.keys(taskPayload).forEach(key => {
+    if (taskPayload[key] === undefined) {
+      delete taskPayload[key];
+    }
+  });
+
+  // Show processing notification
+  const platforms = [];
+  if (settings.uploadDouyin) platforms.push('抖音');
+  if (settings.uploadXiaohongshu) platforms.push('小红书');
+  if (settings.uploadBilibili) platforms.push('B站');
+  const platformText = platforms.length > 0 ? platforms.join('+') : '不上传';
+  
+  showNotification('处理中', `正在创建任务...\n目标: ${platformText}`);
 
   try {
     const response = await fetch(`${apiUrl}/api/tasks`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        source_url: videoUrl,
-        source_platform: 'tiktok',
-        target_language: options.targetLanguage || 'zh-CN',
-        add_subtitles: options.addSubtitles !== false,
-        add_tts: options.addTts !== false,
-        tts_voice: options.ttsVoice || 'zh-CN-XiaoxiaoNeural',
-        upload_douyin: options.uploadDouyin || false,
-        upload_xiaohongshu: options.uploadXiaohongshu || false,
-        // Use transfer mode if no translation needed
-        transfer_only: false
-      })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(taskPayload)
     });
 
     if (!response.ok) {
@@ -182,18 +270,27 @@ async function createTask(videoUrl, options) {
     }
 
     const result = await response.json();
-    showNotification('成功', `任务已创建: ${result.task_id}\n视频将自动处理并发布`);
+    showNotification('成功 ✓', `任务已创建: ${result.task_id}\n视频将自动处理`);
     
     return result;
   } catch (error) {
-    console.error('Create task error:', error);
-    showNotification('错误', `创建任务失败: ${error.message}`);
+    console.error('[iDubb] Create task error:', error);
+    showNotification('错误', `创建失败: ${error.message}`);
     throw error;
   }
 }
 
+function detectPlatform(url) {
+  if (url.includes('tiktok.com') || url.includes('vm.tiktok.com')) {
+    return 'tiktok';
+  }
+  if (url.includes('youtube.com') || url.includes('youtu.be')) {
+    return 'youtube';
+  }
+  return 'auto';
+}
+
 function showNotification(title, message) {
-  // Use chrome notifications if available
   if (chrome.notifications) {
     chrome.notifications.create({
       type: 'basic',
@@ -210,7 +307,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     createTask(request.videoUrl, request.options)
       .then(result => sendResponse({ success: true, result }))
       .catch(error => sendResponse({ success: false, error: error.message }));
-    return true; // Keep channel open for async response
+    return true;
   }
   
   if (request.action === 'getSettings') {
