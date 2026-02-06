@@ -75,6 +75,11 @@ body {
   color: var(--text-muted) !important;
 }
 
+/* Dark mode: override browser default white button background */
+.dark button {
+  background-color: transparent;
+}
+
 /* Dark mode shadows */
 .dark .shadow-sm,
 .dark .shadow {

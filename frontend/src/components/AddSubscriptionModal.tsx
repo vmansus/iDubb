@@ -462,7 +462,7 @@ export default function AddSubscriptionModal({
     <button
       type="button"
       onClick={() => toggleSection(section)}
-      className="w-full flex items-center justify-between py-2 text-left hover:bg-gray-50 rounded"
+      className="w-full flex items-center justify-between py-2 text-left bg-transparent hover:bg-gray-50 rounded"
     >
       <div className="flex items-center gap-2">
         <span className="text-gray-500">{icon}</span>
