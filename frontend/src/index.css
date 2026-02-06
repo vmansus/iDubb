@@ -57,6 +57,17 @@ body {
   background-color: var(--bg-tertiary) !important;
   border-color: var(--border-color) !important;
   color: var(--text-primary) !important;
+  color-scheme: dark;
+}
+
+.dark select option {
+  background-color: var(--bg-tertiary) !important;
+  color: var(--text-primary) !important;
+}
+
+.dark select optgroup {
+  background-color: var(--bg-secondary) !important;
+  color: var(--text-muted) !important;
 }
 
 .dark input::placeholder,
