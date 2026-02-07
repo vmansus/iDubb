@@ -167,6 +167,7 @@ class YouTubeDownloader(BaseDownloader):
             # Add extractor args - use same clients as download for consistency
             if self.ydl_opts_base.get('extractor_args'):
                 opts['extractor_args'] = self.ydl_opts_base['extractor_args']
+            logger.info(f"get_video_info extractor_args: {opts.get('extractor_args', 'NOT SET')}")
 
             # Add remote components for n-challenge solver
             if self.ydl_opts_base.get('remote_components'):
@@ -174,6 +175,10 @@ class YouTubeDownloader(BaseDownloader):
 
             def extract():
                 with yt_dlp.YoutubeDL(opts) as ydl:
+                    # Debug: check what player_client the extractor sees
+                    ie = ydl.get_info_extractor('Youtube')
+                    pc = ie._configuration_arg('player_client', default=['NOT_SET'])
+                    logger.info(f"yt-dlp Youtube extractor player_client: {pc}")
                     return ydl.extract_info(url, download=False)
 
             loop = asyncio.get_event_loop()
