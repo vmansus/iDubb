@@ -157,9 +157,10 @@ class YouTubeDownloader(BaseDownloader):
                 '--extractor-args', 'youtube:player_client=tv;player_skip=webpage',
             ]
 
-            # Add cookies if available
-            if self.ydl_opts_base.get('cookiefile'):
-                cmd.extend(['--cookies', self.ydl_opts_base['cookiefile']])
+            # Use cookies-from-browser for freshest cookies (file-based cookies
+            # get rotated by YouTube when browser tabs are open)
+            # Fall back to cookie file if available
+            cmd.extend(['--cookies-from-browser', 'chrome'])
 
             # Add proxy if available
             if self.ydl_opts_base.get('proxy'):
