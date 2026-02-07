@@ -125,7 +125,6 @@ class YouTubeDownloader(BaseDownloader):
         # Note: android/ios clients don't support cookies
         # mweb and web clients support cookies but may have SABR issues
         # tv client avoids n-challenge issues with player 4e51e895 (yt-dlp#15814)
-        # ONLY use tv client - mweb/web trigger main player JS which has broken n-challenge
         self.ydl_opts_base['extractor_args'] = {
             'youtube': {
                 'player_client': ['tv'],
@@ -145,40 +144,39 @@ class YouTubeDownloader(BaseDownloader):
         return any(re.match(pattern, url) for pattern in self.YOUTUBE_PATTERNS)
 
     async def get_video_info(self, url: str) -> Optional[VideoInfo]:
-        """Get video metadata including all available formats"""
+        """Get video metadata including all available formats.
+        Uses yt-dlp CLI via subprocess to ensure extractor_args (like player_client=tv)
+        are properly applied - the Python API has a bug where player variants don't work."""
+        import subprocess
+        import json
         try:
-            # Use minimal options for info extraction
-            opts = {
-                'quiet': False,
-                'no_warnings': False,
-                'skip_download': True,
-                'ignoreerrors': True,
-                'no_check_certificates': True,
-            }
+            # Build CLI command
+            cmd = [
+                'yt-dlp', '--dump-json', '--no-download', '--no-warnings',
+                '--no-check-certificates', '--no-cache-dir',
+                '--extractor-args', 'youtube:player_client=tv;player_skip=webpage',
+            ]
 
             # Add cookies if available
             if self.ydl_opts_base.get('cookiefile'):
-                opts['cookiefile'] = self.ydl_opts_base['cookiefile']
+                cmd.extend(['--cookies', self.ydl_opts_base['cookiefile']])
 
             # Add proxy if available
             if self.ydl_opts_base.get('proxy'):
-                opts['proxy'] = self.ydl_opts_base['proxy']
+                cmd.extend(['--proxy', self.ydl_opts_base['proxy']])
 
-            # Add headers
-            if self.ydl_opts_base.get('http_headers'):
-                opts['http_headers'] = self.ydl_opts_base['http_headers']
+            cmd.append(url)
 
-            # Add extractor args - use same clients as download for consistency
-            if self.ydl_opts_base.get('extractor_args'):
-                opts['extractor_args'] = self.ydl_opts_base['extractor_args']
-
-            # Add remote components for n-challenge solver
-            if self.ydl_opts_base.get('remote_components'):
-                opts['remote_components'] = self.ydl_opts_base['remote_components']
+            logger.info(f"get_video_info CLI: {' '.join(cmd)}")
 
             def extract():
-                with yt_dlp.YoutubeDL(opts) as ydl:
-                    return ydl.extract_info(url, download=False)
+                result = subprocess.run(
+                    cmd, capture_output=True, text=True, timeout=120
+                )
+                if result.returncode != 0:
+                    logger.error(f"yt-dlp CLI failed: {result.stderr[:500]}")
+                    return None
+                return json.loads(result.stdout)
 
             loop = asyncio.get_event_loop()
             info = await loop.run_in_executor(None, extract)
