@@ -128,7 +128,6 @@ class YouTubeDownloader(BaseDownloader):
         self.ydl_opts_base['extractor_args'] = {
             'youtube': {
                 'player_client': ['tv'],
-                'player_skip': ['webpage'],
             }
         }
 
@@ -154,7 +153,7 @@ class YouTubeDownloader(BaseDownloader):
             cmd = [
                 'yt-dlp', '--dump-json', '--no-download', '--no-warnings',
                 '--no-check-certificates', '--no-cache-dir',
-                '--extractor-args', 'youtube:player_client=tv;player_skip=webpage',
+                '--extractor-args', 'youtube:player_client=tv',
             ]
 
             # Use cookies-from-browser for freshest cookies (file-based cookies
