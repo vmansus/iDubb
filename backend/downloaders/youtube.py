@@ -149,9 +149,12 @@ class YouTubeDownloader(BaseDownloader):
         import subprocess
         import json
         try:
-            # Build CLI command
+            # Build CLI command - use sys.executable's directory to find venv yt-dlp
+            import sys
+            venv_bin = str(Path(sys.executable).parent / 'yt-dlp')
+            ytdlp_cmd = venv_bin if Path(venv_bin).exists() else 'yt-dlp'
             cmd = [
-                'yt-dlp', '--dump-json', '--no-download', '--no-warnings',
+                ytdlp_cmd, '--dump-json', '--no-download', '--no-warnings',
                 '--no-check-certificates', '--no-cache-dir',
                 '--extractor-args', 'youtube:player_client=tv',
             ]
