@@ -1269,7 +1269,7 @@ async def get_video_info(url: str):
         error_str = str(e).lower()
         # Check if error might be cookie-related for YouTube
         is_youtube = pipeline.youtube_downloader.supports_url(url)
-        cookie_related_errors = ['sign in', 'login', 'cookie', 'authentication', 'bot', 'verify']
+        cookie_related_errors = ['sign in', 'login', 'cookie', 'authentication', 'bot', 'verify', 'requested format is not available', 'only images are available', 'sig function', 'n challenge']
 
         if is_youtube and any(err in error_str for err in cookie_related_errors):
             logger.info(f"Possible cookie-related error: {e}, attempting auto-refresh...")
@@ -3289,7 +3289,7 @@ async def get_detailed_video_info(url: str):
         raise
     except Exception as e:
         error_str = str(e).lower()
-        cookie_related_errors = ['sign in', 'login', 'cookie', 'authentication', 'bot', 'verify']
+        cookie_related_errors = ['sign in', 'login', 'cookie', 'authentication', 'bot', 'verify', 'requested format is not available', 'only images are available', 'sig function', 'n challenge']
 
         if is_youtube and any(err in error_str for err in cookie_related_errors):
             logger.info(f"Possible cookie-related error: {e}, attempting auto-refresh...")

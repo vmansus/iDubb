@@ -736,7 +736,10 @@ class VideoPipeline:
             'bot', 'verify', 'confirm you', 'age', 'restricted',
             # Generic errors that are often caused by cookie issues
             'failed to get video info', 'video unavailable', 'private video',
-            'this video is not available', 'no video formats'
+            'this video is not available', 'no video formats',
+            # n challenge / format failures often caused by expired cookies
+            'requested format is not available', 'only images are available',
+            'sig function', 'n challenge'
         ]
         return any(keyword in error_lower for keyword in cookie_related_keywords)
 
