@@ -157,6 +157,7 @@ class YouTubeDownloader(BaseDownloader):
                 ytdlp_cmd, '--dump-json', '--no-download', '--no-warnings',
                 '--no-check-certificates', '--no-cache-dir',
                 '--extractor-args', 'youtube:player_client=tv',
+                '--remote-components', 'ejs:github',
             ]
 
             # Use cookies-from-browser for freshest cookies (file-based cookies
