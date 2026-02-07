@@ -125,9 +125,11 @@ class YouTubeDownloader(BaseDownloader):
         # Note: android/ios clients don't support cookies
         # mweb and web clients support cookies but may have SABR issues
         # tv client avoids n-challenge issues with player 4e51e895 (yt-dlp#15814)
+        # ONLY use tv client - mweb/web trigger main player JS which has broken n-challenge
         self.ydl_opts_base['extractor_args'] = {
             'youtube': {
-                'player_client': ['tv', 'mweb', 'web'],
+                'player_client': ['tv'],
+                'player_skip': ['webpage'],
             }
         }
 
